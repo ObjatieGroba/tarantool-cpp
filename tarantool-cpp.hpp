@@ -11,6 +11,8 @@ extern "C" {
 
 #include "msgpuck.h"
 
+#include <vector>
+#include <string>
 
 class tnt_smart_stream {
 private:
@@ -107,8 +109,17 @@ public:
         StreamHelper<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, value);
         return *this;
     }
+
+    template <class T>
+    tnt_smart_stream& operator<< (const std::vector<T>& value) {
+        tnt_object_add_array(stream, static_cast<unsigned>(value.size()));
+        for (auto&& elem : value) {
+            *this << elem;
+        }
+        return *this;
+    }
         
-#ifdef BOOST
+#ifdef BOOST_OPTIONAL_OPTIONAL_FLC_19NOV2002_HPP
     template <class T>
     tnt_smart_stream& operator<< (const boost::optional<T> &value) {
         if (value) {
@@ -116,6 +127,7 @@ public:
         } else {
             tnt_object_add_nil(stream);
         }
+        return *this;
     }
 #endif
     
@@ -162,58 +174,108 @@ class smart_istream {
     };
     
     const char * data;
+    const char * end;
+
     
 public:
-    smart_istream(const char * pack) : data(pack) {
+    smart_istream(const char * pack, size_t size) : data(pack), end(data + size) {
+        ;
+    }
+
+    smart_istream(const char * pack, const char * end) : data(pack), end(end) {
         ;
     }
     
-    smart_istream& operator>> (std::string& value) {
+    smart_istream& operator>> (std::string &value) {
         uint32_t len;
         const char * ptr = mp_decode_str(&data, &len);
         value = std::string(ptr, len);
         return *this;
     }
+
+    smart_istream& operator>> (short &value) {
+        auto type = mp_typeof(*data);
+        switch (type) {
+            case MP_INT:
+                value = static_cast<short>(mp_decode_int(&data));
+                break;
+            case MP_UINT:
+                value = static_cast<short>(mp_decode_uint(&data));
+                break;
+            default:
+                throw std::runtime_error("error");
+        }
+        return *this;
+    }
+
+    smart_istream& operator>> (unsigned short &value) {
+        if (mp_check_uint(data, end) <= 0) {
+            value = static_cast<unsigned short>(mp_decode_uint(&data));
+            return *this;
+        }
+        throw std::runtime_error("error");
+    }
     
-    smart_istream& operator>> (short& value) {
-        value = mp_decode_int(&data);
+    smart_istream& operator>> (int &value) {
+        auto type = mp_typeof(*data);
+        switch (type) {
+            case MP_INT:
+                value = static_cast<int>(mp_decode_int(&data));
+                break;
+            case MP_UINT:
+                value = static_cast<int>(mp_decode_uint(&data));
+                break;
+            default:
+                throw std::runtime_error("error");
+        }
         return *this;
     }
     
-    smart_istream& operator>> (unsigned short& value) {
-        value = mp_decode_uint(&data);
+    smart_istream& operator>> (unsigned int &value) {
+        if (mp_check_uint(data, end) <= 0) {
+            value = static_cast<unsigned>(mp_decode_uint(&data));
+            return *this;
+        }
+        throw std::runtime_error("error");
+    }
+
+    smart_istream& operator>> (long long &value) {
+        auto type = mp_typeof(*data);
+        switch (type) {
+            case MP_INT:
+                value = static_cast<long long>(mp_decode_int(&data));
+                break;
+            case MP_UINT:
+                value = static_cast<long long>(mp_decode_uint(&data));
+                break;
+            default:
+                throw std::runtime_error("error");
+        }
         return *this;
     }
-    
-    smart_istream& operator>> (int& value) {
-        value = mp_decode_int(&data);
+
+    smart_istream& operator>> (unsigned long long &value) {
+        if (mp_check_uint(data, end) <= 0) {
+            value = static_cast<unsigned long long>(mp_decode_uint(&data));
+            return *this;
+        }
+        throw std::runtime_error("error");
+    }
+
+#ifdef BOOST_OPTIONAL_OPTIONAL_FLC_19NOV2002_HPP
+    template <class T>
+    smart_istream& operator>> (boost::optional<T> &value) {
+        if (mp_typeof(*data) == MP_NIL) {
+            mp_decode_nil(&data);
+            value.reset();
+            return *this;
+        }
+        T t;
+        *this >> t;
+        value = t;
         return *this;
     }
-    
-    smart_istream& operator>> (unsigned int& value) {
-        value = mp_decode_uint(&data);
-        return *this;
-    }
-    
-    smart_istream& operator>> (long& value) {
-        value = mp_decode_int(&data);
-        return *this;
-    }
-    
-    smart_istream& operator>> (unsigned long& value) {
-        value = mp_decode_uint(&data);
-        return *this;
-    }
-    
-    smart_istream& operator>> (long long& value) {
-        value = mp_decode_int(&data);
-        return *this;
-    }
-    
-    smart_istream& operator>> (unsigned long long& value) {
-        value = mp_decode_uint(&data);
-        return *this;
-    }
+#endif
     
     template <typename... Args>
     smart_istream& operator>> (std::tuple<Args...>& tuple) {
@@ -222,13 +284,23 @@ public:
         StreamHelper<std::tuple<Args...>, sizeof...(Args)>::in_tuple(this, tuple);
         return *this;
     }
+
+    template <class T>
+    smart_istream& operator>> (std::vector<T>& vector) {
+        size_t size = mp_decode_array(&data);
+        vector.resize(size);
+        for (size_t i = 0; i != size; ++i) {
+            *this >> vector[i];
+        }
+        return *this;
+    }
 };
 
 class TNT {
     struct tnt_stream * tnt;
     
     int64_t call_function(const std::string &name, struct tnt_stream *tuple) {
-        struct tnt_request * request   = tnt_request_call(NULL);
+        struct tnt_request * request = tnt_request_call(NULL);
 
         tnt_request_set_funcz(request, name.c_str());
         tnt_request_set_tuple(request, tuple);
@@ -260,7 +332,7 @@ public:
     }
     
     template <class Tuple>
-    void call(const std::string& name, tnt_const_tuple_obj args, Tuple tuple) {
+    void call2(const std::string& name, tnt_const_tuple_obj args, Tuple tuple) {
         call_function(name, args.raw());
         
         struct tnt_reply *reply = tnt_reply_init(NULL);
@@ -272,7 +344,7 @@ public:
             throw std::runtime_error(reply->error);
         }
 
-        smart_istream stream(reply->data);
+        smart_istream stream(reply->data, reply->buf_size);
 
         try {
             stream >> tuple;
@@ -281,6 +353,48 @@ public:
             throw;
         }
         
+        tnt_reply_free(reply);
+    }
+
+    template <class... Args>
+    std::tuple<Args...> call(const std::string& name, tnt_const_tuple_obj args) {
+        std::tuple<Args...> tuple;
+
+        call_function(name, args.raw());
+
+        struct tnt_reply *reply = tnt_reply_init(NULL);
+
+        tnt->read_reply(tnt, reply);
+
+        if (reply->code != 0) {
+            tnt_reply_free(reply);
+            throw std::runtime_error(reply->error);
+        }
+
+        smart_istream stream(reply->data, reply->buf_size);
+
+        try {
+            stream >> tuple;
+        } catch (std::exception& e) {
+            tnt_reply_free(reply);
+            throw;
+        }
+
+        tnt_reply_free(reply);
+        return tuple;
+    }
+
+    void call(const std::string& name, tnt_const_tuple_obj args) {
+        call_function(name, args.raw());
+
+        struct tnt_reply *reply = tnt_reply_init(NULL);
+
+        tnt->read_reply(tnt, reply);
+
+        if (reply->code != 0) {
+            tnt_reply_free(reply);
+            throw std::runtime_error(reply->error);
+        }
         tnt_reply_free(reply);
     }
 };
