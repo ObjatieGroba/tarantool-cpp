@@ -8,6 +8,8 @@
 
 #include "tarantool-cpp.hpp"
 
+using namespace TNT;
+
 void test1() {
     
     int ox = -3;
@@ -42,7 +44,7 @@ void test1() {
 }
 
 void test2() {
-    TNT tnt("127.0.0.1", "10001");
+    TarantoolConnector tnt("127.0.0.1", "10001");
     
     int od = -3;
     unsigned ox = 4;
@@ -61,7 +63,7 @@ void test2() {
 }
 
 void test3() {
-    TNT tnt("127.0.0.1", "10001");
+    TarantoolConnector tnt("127.0.0.1", "10001");
     
     int od = 3, oa = -1, ob = -2, oc = -3;
     unsigned ox = 4;
@@ -95,7 +97,7 @@ void test3() {
 }
 
 void test_optional() {
-    TNT tnt("127.0.0.1", "10001");
+    TarantoolConnector tnt("127.0.0.1", "10001");
 
     boost::optional<int> value;
 
@@ -106,17 +108,13 @@ void test_optional() {
     assert(bool(result));
     assert(result.get() == 3);
 
-    int add;
+    std::tie(result) = tnt.call<boost::optional<int>>("same", {value});
 
-    // there is no way to call function with null as argument (((
-    std::tie(result, add) = tnt.call<boost::optional<int>, int>("same", {value, 4});
-
-    assert(add == 4);
     assert(!bool(result));
 }
 
 void test_vector() {
-    TNT tnt("127.0.0.1", "10001");
+    TarantoolConnector tnt("127.0.0.1", "10001");
 
     std::vector<std::string> in;
     std::vector<std::string> out;
@@ -127,14 +125,38 @@ void test_vector() {
         in.push_back(std::to_string(i));
     }
 
-    int add;
-    std::tie(out, add) = tnt.call<std::vector<std::string>, int>("same", {in, 5});
+    std::tie(out) = tnt.call<std::vector<std::string>>("same", {in});
 
-    assert(add == 5);
     assert(out.size() == num);
 
     for (size_t i = 0; i != num; ++i) {
         assert(out[i] == std::to_string(i));
+    }
+}
+
+void test_errors() {
+    TarantoolConnector tnt("127.0.0.1", "10001");
+
+    int in = 5, out;
+    std::tie(out) = tnt.call<int>("same", {in});
+
+    assert(in == out);
+
+    try {
+        int tmp;
+        std::tie(out, tmp) = tnt.call<int, int>("same", {in});
+        assert(false);
+    } catch (const std::length_error& e) {
+        assert(e.what() != NULL);
+    }
+
+    in = -1;
+    try {
+        unsigned tmp;
+        std::tie(tmp) = tnt.call<unsigned>("same", {in});
+        assert(false);
+    } catch (const type_error& e) {
+        assert(e.what() != NULL);
     }
 }
 
@@ -144,4 +166,5 @@ int main() {
     test3();
     test_optional();
     test_vector();
+    test_errors();
 }
