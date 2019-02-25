@@ -13,9 +13,10 @@ extern "C" {
 
 #include <vector>
 #include <string>
+#include <map>
 #include <stdexcept>
 
-namespace TNT {
+namespace tarantool {
 
 class type_error : public std::runtime_error {
 public:
@@ -121,6 +122,15 @@ public:
     }
 
     template<class T>
+    tnt_smart_stream &operator<<(const std::vector<T> &value) {
+        tnt_object_add_array(stream, static_cast<unsigned>(value.size()));
+        for (auto &&elem : value) {
+            *this << elem;
+        }
+        return *this;
+    }
+    
+    template<class K, class V>
     tnt_smart_stream &operator<<(const std::vector<T> &value) {
         tnt_object_add_array(stream, static_cast<unsigned>(value.size()));
         for (auto &&elem : value) {
@@ -315,6 +325,21 @@ public:
         StreamHelper<std::tuple<Args...>, sizeof...(Args)>::in_tuple(this, tuple);
         return *this;
     }
+    
+    template<typename... Args>
+    smart_istream &operator>>(std::tuple<Args&...> tuple) {
+        auto type = mp_typeof(*data);
+        if (type != MP_ARRAY) {
+            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_ARRAY");
+        }
+        size_t size = mp_decode_array(&data);
+        if (size != sizeof...(Args)) {
+            throw std::length_error(
+                    "Bad tuple size: " + std::to_string(size) + ", expected: " + std::to_string(sizeof...(Args)));
+        }
+        StreamHelper<std::tuple<Args&...>, sizeof...(Args)>::in_tuple(this, tuple);
+        return *this;
+    }
 
     template<class T>
     smart_istream &operator>>(std::vector<T> &vector) {
@@ -364,6 +389,11 @@ public:
             tnt_stream_free(tnt);
             throw std::runtime_error("Can not connect to tnt.");
         }
+    }
+    
+    ~TarantoolConnector() {
+        tnt_close(tnt);
+        tnt_stream_free(tnt);
     }
 
     template<class Tuple>

@@ -8,7 +8,7 @@
 
 #include "tarantool-cpp.hpp"
 
-using namespace TNT;
+using namespace tarantool;
 
 void test1() {
     
@@ -160,6 +160,36 @@ void test_errors() {
     }
 }
 
+void test_box_tuple() {
+    TarantoolConnector tnt("127.0.0.1", "10001");
+    boost::optional<std::tuple<std::string, std::string, std::string, std::string>> tuple;
+    std::tie(tuple) = tnt.call<boost::optional<std::tuple<std::string, std::string, std::string, std::string>>>("create_tuple", 1);
+    assert(!tuple);
+    std::tie(tuple) = tnt.call<boost::optional<std::tuple<std::string, std::string, std::string, std::string>>>("create_tuple", 0);
+    assert(tuple);
+    assert(std::get<0>(tuple.get()) == std::get<3>(tuple.get()));
+}
+
+class MyTupleString4 {
+public:
+    std::string s1;
+    std::string s2;
+    std::string s3;
+    std::string s4;
+    MyTupleString4() {}
+};
+
+tarantool::smart_istream &operator>>(tarantool::smart_istream & stream, MyTupleString4 &value) {
+    return stream >> std::tie(value.s1, value.s2, value.s3, value.s4);
+}
+
+void class_example() {
+    TarantoolConnector tnt("127.0.0.1", "10001");
+    MyTupleString4 tuple;
+    std::tie(tuple) = tnt.call<MyTupleString4>("create_tuple", 0);
+    assert(tuple.s1 == tuple.s4);
+}
+
 int main() {
     test1();
     test2();
@@ -167,4 +197,6 @@ int main() {
     test_optional();
     test_vector();
     test_errors();
+    test_box_tuple();
+    class_example();
 }
