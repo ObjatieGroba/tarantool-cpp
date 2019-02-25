@@ -25,12 +25,100 @@ public:
     }
 };
 
-class tnt_smart_stream {
+class TntStream {
+protected:
+    struct tnt_stream *stream = NULL;
+
+public:
+    explicit TntStream(struct tnt_stream *stream_) : stream(stream_) {
+        ;
+    }
+
+    ~TntStream() {
+        if (stream) {
+            tnt_stream_free(stream);
+        }
+    }
+};
+
+class TntObject : public TntStream {
+    friend class TntRequest;
+public:
+    TntObject() : TntStream(tnt_object(NULL)) {
+        if (stream == NULL) {
+            throw std::runtime_error("Can not create tnt object.");
+        }
+    }
+};
+
+class TntNet : public TntStream {
+    friend class TntReply;
+    friend class TntRequest;
+
+public:
+    TntNet() : TntStream(tnt_net(NULL)) {
+        if (stream == NULL) {
+            throw std::runtime_error("Can not create tnt net");
+        }
+    }
+};
+
+class TntReply {
+protected:
+    struct tnt_reply *reply;
+
+public:
+    TntReply() : reply(tnt_reply_init(NULL)) {
+        if (reply == NULL) {
+            throw std::runtime_error("Can not create tnt reply");
+        }
+    }
+
+    ~TntReply() {
+        tnt_reply_free(reply);
+    }
+
+    void read_reply(TntNet &tnt_net) {
+        if (tnt_net.stream->read_reply(tnt_net.stream, reply) == -1) {
+            throw std::runtime_error("Failed to read reply");
+        }
+        if (reply->code != 0) {
+            throw std::runtime_error(std::string(reply->error));
+        }
+    }
+};
+
+class TntRequest {
+protected:
+    struct tnt_request *request;
+
+public:
+    TntRequest() : request(tnt_request_call(NULL)) {
+        if (request == NULL) {
+            throw std::runtime_error("Can not create tnt request");
+        }
+    }
+
+    ~TntRequest() {
+        tnt_request_free(request);
+    }
+
+    void call(const std::string &name, TntObject &tnt_object, TntNet &tnt_net) {
+        tnt_request_set_funcz(request, name.c_str());
+        tnt_request_set_tuple(request, tnt_object.stream);
+        if (tnt_request_compile(tnt_net.stream, request) == -1) {
+            throw std::runtime_error("Request compile failed");
+        }
+        tnt_flush(tnt_net.stream);
+    }
+};
+
+class SmartTntOStream : public TntObject {
 private:
     template<class Tuple, size_t N>
     class StreamHelper {
     public:
-        static void out_tuple(tnt_smart_stream *stream, const Tuple &tuple) {
+        static void out_tuple(SmartTntOStream *stream, const Tuple &tuple) {
             StreamHelper<Tuple, N - 1>::out_tuple(stream, tuple);
             *stream << std::get<N - 1>(tuple);
         }
@@ -39,99 +127,77 @@ private:
     template<class Tuple>
     class StreamHelper<Tuple, 1> {
     public:
-        static void out_tuple(tnt_smart_stream *stream, const Tuple &tuple) {
+        static void out_tuple(SmartTntOStream *stream, const Tuple &tuple) {
             *stream << std::get<0>(tuple);
         }
     };
 
-    struct tnt_stream *stream;
-
 public:
-    tnt_smart_stream() {
-        if ((stream = tnt_object(NULL)) == NULL) {
-            throw std::runtime_error("Can not create tnt object.");
-        }
-    }
 
-    ~tnt_smart_stream() {
-        if (stream != NULL) {
-            tnt_stream_free(stream);
-        }
-    }
-
-    tnt_smart_stream &operator<<(bool value) {
+    SmartTntOStream &operator<<(bool value) {
         tnt_object_add_bool(stream, value);
         return *this;
     }
 
-    tnt_smart_stream &operator<<(short value) {
+    SmartTntOStream &operator<<(short value) {
         tnt_object_add_int(stream, value);
         return *this;
     }
 
-    tnt_smart_stream &operator<<(unsigned short value) {
+    SmartTntOStream &operator<<(unsigned short value) {
         tnt_object_add_uint(stream, value);
         return *this;
     }
 
-    tnt_smart_stream &operator<<(int value) {
+    SmartTntOStream &operator<<(int value) {
         tnt_object_add_int(stream, value);
         return *this;
     }
 
-    tnt_smart_stream &operator<<(unsigned int value) {
+    SmartTntOStream &operator<<(unsigned int value) {
         tnt_object_add_uint(stream, value);
         return *this;
     }
 
-    tnt_smart_stream &operator<<(long value) {
+    SmartTntOStream &operator<<(long value) {
         tnt_object_add_int(stream, value);
         return *this;
     }
 
-    tnt_smart_stream &operator<<(unsigned long value) {
+    SmartTntOStream &operator<<(unsigned long value) {
         tnt_object_add_uint(stream, value);
         return *this;
     }
 
-    tnt_smart_stream &operator<<(long long value) {
+    SmartTntOStream &operator<<(long long value) {
         tnt_object_add_int(stream, value);
         return *this;
     }
 
-    tnt_smart_stream &operator<<(unsigned long long value) {
+    SmartTntOStream &operator<<(unsigned long long value) {
         tnt_object_add_uint(stream, value);
         return *this;
     }
 
-    tnt_smart_stream &operator<<(const std::string &value) {
+    SmartTntOStream &operator<<(const std::string &value) {
         tnt_object_add_str(stream, value.c_str(), value.size());
         return *this;
     }
 
-    tnt_smart_stream &operator<<(const char *value) {
+    SmartTntOStream &operator<<(const char *value) {
         tnt_object_add_str(stream, value, strlen(value));
         return *this;
     }
 
     template<typename... Args>
-    tnt_smart_stream &operator<<(const std::tuple<Args...> &value) {
+    SmartTntOStream &operator<<(const std::tuple<Args...> &value) {
         tnt_object_add_array(stream, std::tuple_size<std::tuple<Args...>>::value);
         StreamHelper<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, value);
         return *this;
     }
 
     template<class T>
-    tnt_smart_stream &operator<<(const std::vector<T> &value) {
-        tnt_object_add_array(stream, static_cast<unsigned>(value.size()));
-        for (auto &&elem : value) {
-            *this << elem;
-        }
-        return *this;
-    }
-    
-    template<class K, class V>
-    tnt_smart_stream &operator<<(const std::vector<T> &value) {
+    SmartTntOStream &operator<<(const std::vector<T> &value) {
         tnt_object_add_array(stream, static_cast<unsigned>(value.size()));
         for (auto &&elem : value) {
             *this << elem;
@@ -140,9 +206,8 @@ public:
     }
 
 #ifdef BOOST_OPTIONAL_OPTIONAL_FLC_19NOV2002_HPP
-
     template<class T>
-    tnt_smart_stream &operator<<(const boost::optional<T> &value) {
+    SmartTntOStream &operator<<(const boost::optional<T> &value) {
         if (value) {
             *this << value.get();
         } else {
@@ -150,38 +215,23 @@ public:
         }
         return *this;
     }
-
 #endif
 
-    struct tnt_stream *raw() {
-        return stream;
-    }
 };
 
-class tnt_const_tuple_obj {
-private:
-    tnt_smart_stream stream;
+class ConstTupleTntObject : public SmartTntOStream {
 public:
     template<typename... Args>
-    tnt_const_tuple_obj(std::tuple<Args...> &tuple) {
-        stream << tuple;
-    }
-
-    template<typename... Args>
-    tnt_const_tuple_obj(Args... args) {
-        stream << std::make_tuple(args...);
-    }
-
-    struct tnt_stream *raw() {
-        return stream.raw();
+    ConstTupleTntObject(Args... args) {
+        *this << std::make_tuple(args...);
     }
 };
 
-class smart_istream {
+class SmartTntIStream : public TntReply {
     template<class Tuple, size_t N>
     class StreamHelper {
     public:
-        static void in_tuple(smart_istream *stream, Tuple &tuple) {
+        static void in_tuple(SmartTntIStream *stream, Tuple &tuple) {
             StreamHelper<Tuple, N - 1>::in_tuple(stream, tuple);
             *stream >> std::get<N - 1>(tuple);
         }
@@ -190,7 +240,7 @@ class smart_istream {
     template<class Tuple>
     class StreamHelper<Tuple, 1> {
     public:
-        static void in_tuple(smart_istream *stream, Tuple &tuple) {
+        static void in_tuple(SmartTntIStream *stream, Tuple &tuple) {
             *stream >> std::get<0>(tuple);
         }
     };
@@ -198,17 +248,21 @@ class smart_istream {
     const char *data;
     const char *end;
 
+    inline void check_buf_end() {
+        if (data >= end) {
+            throw std::runtime_error("End of stream");
+        }
+    }
 
 public:
-    smart_istream(const char *pack, size_t size) : data(pack), end(data + size) {
-        ;
+    explicit SmartTntIStream(TntNet &tnt_net) {
+        read_reply(tnt_net);
+        data = reply->data;
+        end = data + reply->buf_size;
     }
 
-    smart_istream(const char *pack, const char *end) : data(pack), end(end) {
-        ;
-    }
-
-    smart_istream &operator>>(std::string &value) {
+    SmartTntIStream &operator>>(std::string &value) {
+        check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_STR) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_STR");
@@ -219,7 +273,8 @@ public:
         return *this;
     }
 
-    smart_istream &operator>>(short &value) {
+    SmartTntIStream &operator>>(short &value) {
+        check_buf_end();
         auto type = mp_typeof(*data);
         switch (type) {
             case MP_INT:
@@ -235,7 +290,8 @@ public:
         return *this;
     }
 
-    smart_istream &operator>>(unsigned short &value) {
+    SmartTntIStream &operator>>(unsigned short &value) {
+        check_buf_end();
         auto type = mp_typeof(*data);
         if (type == MP_UINT) {
             value = static_cast<unsigned short>(mp_decode_uint(&data));
@@ -244,7 +300,8 @@ public:
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_UINT");
     }
 
-    smart_istream &operator>>(int &value) {
+    SmartTntIStream &operator>>(int &value) {
+        check_buf_end();
         auto type = mp_typeof(*data);
         switch (type) {
             case MP_INT:
@@ -260,7 +317,8 @@ public:
         return *this;
     }
 
-    smart_istream &operator>>(unsigned int &value) {
+    SmartTntIStream &operator>>(unsigned int &value) {
+        check_buf_end();
         auto type = mp_typeof(*data);
         if (type == MP_UINT) {
             value = static_cast<unsigned>(mp_decode_uint(&data));
@@ -269,7 +327,8 @@ public:
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_UINT");
     }
 
-    smart_istream &operator>>(long long &value) {
+    SmartTntIStream &operator>>(long long &value) {
+        check_buf_end();
         auto type = mp_typeof(*data);
         switch (type) {
             case MP_INT:
@@ -285,7 +344,8 @@ public:
         return *this;
     }
 
-    smart_istream &operator>>(unsigned long long &value) {
+    SmartTntIStream &operator>>(unsigned long long &value) {
+        check_buf_end();
         auto type = mp_typeof(*data);
         if (type == MP_UINT) {
             value = static_cast<unsigned long long>(mp_decode_uint(&data));
@@ -295,9 +355,9 @@ public:
     }
 
 #ifdef BOOST_OPTIONAL_OPTIONAL_FLC_19NOV2002_HPP
-
     template<class T>
-    smart_istream &operator>>(boost::optional<T> &value) {
+    SmartTntIStream &operator>>(boost::optional<T> &value) {
+        check_buf_end();
         if (mp_typeof(*data) == MP_NIL) {
             mp_decode_nil(&data);
             value.reset();
@@ -308,11 +368,11 @@ public:
         value = t;
         return *this;
     }
-
 #endif
 
     template<typename... Args>
-    smart_istream &operator>>(std::tuple<Args...> &tuple) {
+    SmartTntIStream &operator>>(std::tuple<Args...> &tuple) {
+        check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_ARRAY) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_ARRAY");
@@ -327,7 +387,8 @@ public:
     }
     
     template<typename... Args>
-    smart_istream &operator>>(std::tuple<Args&...> tuple) {
+    SmartTntIStream &operator>>(std::tuple<Args&...> tuple) {
+        check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_ARRAY) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_ARRAY");
@@ -342,7 +403,8 @@ public:
     }
 
     template<class T>
-    smart_istream &operator>>(std::vector<T> &vector) {
+    SmartTntIStream &operator>>(std::vector<T> &vector) {
+        check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_ARRAY) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_ARRAY");
@@ -356,111 +418,61 @@ public:
     }
 };
 
-class TarantoolConnector {
-    struct tnt_stream *tnt;
-
+class TarantoolConnector : private TntNet {
     int64_t call_function(const std::string &name, struct tnt_stream *tuple) {
         struct tnt_request *request = tnt_request_call(NULL);
 
         tnt_request_set_funcz(request, name.c_str());
         tnt_request_set_tuple(request, tuple);
 
-        int64_t result = tnt_request_compile(tnt, request);
+        int64_t result = tnt_request_compile(stream, request);
 
         tnt_request_free(request);
-        tnt_flush(tnt);
+        tnt_flush(stream);
 
         return result;
     }
 
 public:
     TarantoolConnector(const std::string &addr, const std::string &port) {
-        tnt = tnt_net(NULL);
-        if (tnt == NULL) {
-            throw std::runtime_error("Can not create tnt net");
-        }
-        if (tnt_set(tnt, TNT_OPT_URI, (addr + ":" + port).c_str()) != 0) {
-            tnt_stream_free(tnt);
+        if (tnt_set(stream, TNT_OPT_URI, (addr + ":" + port).c_str()) != 0) {
             throw std::runtime_error("Can not set addr of tnt.");
         }
-        tnt_set(tnt, TNT_OPT_SEND_BUF, 0);
-        tnt_set(tnt, TNT_OPT_RECV_BUF, 0);
-        if (tnt_connect(tnt) != 0) {
-            tnt_stream_free(tnt);
+        tnt_set(stream, TNT_OPT_SEND_BUF, 0);
+        tnt_set(stream, TNT_OPT_RECV_BUF, 0);
+        if (tnt_connect(stream) != 0) {
             throw std::runtime_error("Can not connect to tnt.");
         }
     }
     
     ~TarantoolConnector() {
-        tnt_close(tnt);
-        tnt_stream_free(tnt);
+        tnt_close(stream);
     }
 
     template<class Tuple>
-    void call2(const std::string &name, tnt_const_tuple_obj args, Tuple tuple) {
-        call_function(name, args.raw());
+    void call2(const std::string &name, ConstTupleTntObject args, Tuple tuple) {
+        TntRequest request;
+        request.call(name, args, *this);
 
-        struct tnt_reply *reply = tnt_reply_init(NULL);
-
-        tnt->read_reply(tnt, reply);
-
-        if (reply->code != 0) {
-            tnt_reply_free(reply);
-            throw std::runtime_error(reply->error);
-        }
-
-        smart_istream stream(reply->data, reply->buf_size);
-
-        try {
-            stream >> tuple;
-        } catch (std::exception &e) {
-            tnt_reply_free(reply);
-            throw;
-        }
-
-        tnt_reply_free(reply);
+        SmartTntIStream reply(*this);
+        reply >> tuple;
     }
 
     template<class... Args>
-    std::tuple<Args...> call(const std::string &name, tnt_const_tuple_obj args) {
+    std::tuple<Args...> call(const std::string &name, ConstTupleTntObject args) {
+        TntRequest request;
+        request.call(name, args, *this);
+
         std::tuple<Args...> tuple;
-
-        call_function(name, args.raw());
-
-        struct tnt_reply *reply = tnt_reply_init(NULL);
-
-        tnt->read_reply(tnt, reply);
-
-        if (reply->code != 0) {
-            tnt_reply_free(reply);
-            throw std::runtime_error(reply->error);
-        }
-
-        smart_istream stream(reply->data, reply->buf_size);
-
-        try {
-            stream >> tuple;
-        } catch (std::exception &e) {
-            tnt_reply_free(reply);
-            throw;
-        }
-
-        tnt_reply_free(reply);
+        SmartTntIStream reply(*this);
+        reply >> tuple;
         return tuple;
     }
 
-    void call(const std::string &name, tnt_const_tuple_obj args) {
-        call_function(name, args.raw());
-
-        struct tnt_reply *reply = tnt_reply_init(NULL);
-
-        tnt->read_reply(tnt, reply);
-
-        if (reply->code != 0) {
-            tnt_reply_free(reply);
-            throw std::runtime_error(reply->error);
-        }
-        tnt_reply_free(reply);
+    void call(const std::string &name, ConstTupleTntObject args) {
+        TntRequest request;
+        request.call(name, args, *this);
+        SmartTntIStream reply(*this);
     }
 };
 

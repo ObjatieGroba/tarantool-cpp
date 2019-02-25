@@ -10,38 +10,38 @@
 
 using namespace tarantool;
 
-void test1() {
-    
-    int ox = -3;
-    unsigned oy = 10;
-    std::string oa = "STRING1";
-    std::string ob = "S2";
-    
-    std::vector<char> data(4096, '\0');
-    char * ptr = data.data();
-    ptr = mp_encode_array(ptr, 3);
-    ptr = mp_encode_array(ptr, 2);
-    ptr = mp_encode_int(ptr, ox);
-    ptr = mp_encode_uint(ptr, oy);
-    ptr = mp_encode_str(ptr, oa.c_str(), oa.size());
-    ptr = mp_encode_str(ptr, ob.c_str(), ob.size());
-    
-    std::string a, b;
-    int x;
-    unsigned int y;
-    
-    smart_istream in(data.data(), ptr);
-    
-    auto f = std::tie(x, y);
-    auto t = std::tie(f, a, b);
-    
-    in >> t;
-    
-    assert(ox == x);
-    assert(oy == y);
-    assert(oa == a);
-    assert(ob == b);
-}
+//void test1() {
+//
+//    int ox = -3;
+//    unsigned oy = 10;
+//    std::string oa = "STRING1";
+//    std::string ob = "S2";
+//
+//    std::vector<char> data(4096, '\0');
+//    char * ptr = data.data();
+//    ptr = mp_encode_array(ptr, 3);
+//    ptr = mp_encode_array(ptr, 2);
+//    ptr = mp_encode_int(ptr, ox);
+//    ptr = mp_encode_uint(ptr, oy);
+//    ptr = mp_encode_str(ptr, oa.c_str(), oa.size());
+//    ptr = mp_encode_str(ptr, ob.c_str(), ob.size());
+//
+//    std::string a, b;
+//    int x;
+//    unsigned int y;
+//
+//    SmartTntIStream in(data.data(), ptr);
+//
+//    auto f = std::tie(x, y);
+//    auto t = std::tie(f, a, b);
+//
+//    in >> t;
+//
+//    assert(ox == x);
+//    assert(oy == y);
+//    assert(oa == a);
+//    assert(ob == b);
+//}
 
 void test2() {
     TarantoolConnector tnt("127.0.0.1", "10001");
@@ -179,7 +179,7 @@ public:
     MyTupleString4() {}
 };
 
-tarantool::smart_istream &operator>>(tarantool::smart_istream & stream, MyTupleString4 &value) {
+tarantool::SmartTntIStream &operator>>(tarantool::SmartTntIStream & stream, MyTupleString4 &value) {
     return stream >> std::tie(value.s1, value.s2, value.s3, value.s4);
 }
 
@@ -191,7 +191,7 @@ void class_example() {
 }
 
 int main() {
-    test1();
+    // test1();
     test2();
     test3();
     test_optional();
