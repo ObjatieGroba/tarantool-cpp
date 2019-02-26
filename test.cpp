@@ -4,7 +4,7 @@
 
 #include <iostream>
 
-#include <boost/optional.hpp>
+#include <optional>
 
 #include "tarantool-cpp.hpp"
 
@@ -54,7 +54,8 @@ void test2() {
     unsigned x;
     std::string f;
     
-    tnt.call2("test2", {od, ox}, std::tie(x, d, f));
+    auto result = tnt.call("test2", {od, ox});
+    result.parse(x, d, f);
     
     assert(od == d);
     assert(ox == x);
@@ -99,16 +100,16 @@ void test3() {
 void test_optional() {
     TarantoolConnector tnt("127.0.0.1", "10001");
 
-    boost::optional<int> value;
+    std::optional<int> value;
 
-    boost::optional<int> result;
+    std::optional<int> result;
 
-    std::tie(result) = tnt.call<boost::optional<int>>("same", {3});
+    std::tie(result) = tnt.call<std::optional<int>>("same", {3});
 
     assert(bool(result));
-    assert(result.get() == 3);
+    assert(result.value() == 3);
 
-    std::tie(result) = tnt.call<boost::optional<int>>("same", {value});
+    std::tie(result) = tnt.call<std::optional<int>>("same", {value});
 
     assert(!bool(result));
 }
@@ -147,7 +148,7 @@ void test_errors() {
         std::tie(out, tmp) = tnt.call<int, int>("same", {in});
         assert(false);
     } catch (const std::length_error& e) {
-        assert(e.what() != NULL);
+        ;
     }
 
     in = -1;
@@ -156,18 +157,18 @@ void test_errors() {
         std::tie(tmp) = tnt.call<unsigned>("same", {in});
         assert(false);
     } catch (const type_error& e) {
-        assert(e.what() != NULL);
+        ;
     }
 }
 
 void test_box_tuple() {
     TarantoolConnector tnt("127.0.0.1", "10001");
-    boost::optional<std::tuple<std::string, std::string, std::string, std::string>> tuple;
-    std::tie(tuple) = tnt.call<boost::optional<std::tuple<std::string, std::string, std::string, std::string>>>("create_tuple", 1);
+    std::optional<std::tuple<std::string, std::string, std::string, std::string>> tuple;
+    std::tie(tuple) = tnt.call<std::optional<std::tuple<std::string, std::string, std::string, std::string>>>("create_tuple", 1);
     assert(!tuple);
-    std::tie(tuple) = tnt.call<boost::optional<std::tuple<std::string, std::string, std::string, std::string>>>("create_tuple", 0);
+    std::tie(tuple) = tnt.call<std::optional<std::tuple<std::string, std::string, std::string, std::string>>>("create_tuple", 0);
     assert(tuple);
-    assert(std::get<0>(tuple.get()) == std::get<3>(tuple.get()));
+    assert(std::get<0>(tuple.value()) == std::get<3>(tuple.value()));
 }
 
 class MyTupleString4 {
@@ -176,7 +177,7 @@ public:
     std::string s2;
     std::string s3;
     std::string s4;
-    MyTupleString4() {}
+    MyTupleString4() = default;
 };
 
 tarantool::SmartTntIStream &operator>>(tarantool::SmartTntIStream & stream, MyTupleString4 &value) {

@@ -13,8 +13,11 @@ extern "C" {
 
 #include <vector>
 #include <string>
-#include <map>
 #include <stdexcept>
+
+#if __cplusplus > 201402L
+#include <optional>
+#endif
 
 namespace tarantool {
 
@@ -27,7 +30,7 @@ public:
 
 class TntStream {
 protected:
-    struct tnt_stream *stream = NULL;
+    struct tnt_stream *stream = nullptr;
 
 public:
     explicit TntStream(struct tnt_stream *stream_) : stream(stream_) {
@@ -44,8 +47,8 @@ public:
 class TntObject : public TntStream {
     friend class TntRequest;
 public:
-    TntObject() : TntStream(tnt_object(NULL)) {
-        if (stream == NULL) {
+    TntObject() : TntStream(tnt_object(nullptr)) {
+        if (stream == nullptr) {
             throw std::runtime_error("Can not create tnt object.");
         }
     }
@@ -56,8 +59,8 @@ class TntNet : public TntStream {
     friend class TntRequest;
 
 public:
-    TntNet() : TntStream(tnt_net(NULL)) {
-        if (stream == NULL) {
+    TntNet() : TntStream(tnt_net(nullptr)) {
+        if (stream == nullptr) {
             throw std::runtime_error("Can not create tnt net");
         }
     }
@@ -68,8 +71,8 @@ protected:
     struct tnt_reply *reply;
 
 public:
-    TntReply() : reply(tnt_reply_init(NULL)) {
-        if (reply == NULL) {
+    TntReply() : reply(tnt_reply_init(nullptr)) {
+        if (reply == nullptr) {
             throw std::runtime_error("Can not create tnt reply");
         }
     }
@@ -93,8 +96,8 @@ protected:
     struct tnt_request *request;
 
 public:
-    TntRequest() : request(tnt_request_call(NULL)) {
-        if (request == NULL) {
+    TntRequest() : request(tnt_request_call(nullptr)) {
+        if (request == nullptr) {
             throw std::runtime_error("Can not create tnt request");
         }
     }
@@ -180,12 +183,12 @@ public:
     }
 
     SmartTntOStream &operator<<(const std::string &value) {
-        tnt_object_add_str(stream, value.c_str(), value.size());
+        tnt_object_add_str(stream, value.c_str(), static_cast<uint32_t>(value.size()));
         return *this;
     }
 
     SmartTntOStream &operator<<(const char *value) {
-        tnt_object_add_str(stream, value, strlen(value));
+        tnt_object_add_str(stream, value, static_cast<uint32_t>(strlen(value)));
         return *this;
     }
 
@@ -210,6 +213,18 @@ public:
     SmartTntOStream &operator<<(const boost::optional<T> &value) {
         if (value) {
             *this << value.get();
+        } else {
+            tnt_object_add_nil(stream);
+        }
+        return *this;
+    }
+#endif
+
+#if __cplusplus > 201402L
+    template<class T>
+    SmartTntOStream &operator<<(const std::optional<T> &value) {
+        if (value) {
+            *this << value.value();
         } else {
             tnt_object_add_nil(stream);
         }
@@ -370,6 +385,22 @@ public:
     }
 #endif
 
+#if __cplusplus > 201402L
+    template<class T>
+    SmartTntIStream &operator>>(std::optional<T> &value) {
+        check_buf_end();
+        if (mp_typeof(*data) == MP_NIL) {
+            mp_decode_nil(&data);
+            value.reset();
+            return *this;
+        }
+        T t;
+        *this >> t;
+        value = t;
+        return *this;
+    }
+#endif
+
     template<typename... Args>
     SmartTntIStream &operator>>(std::tuple<Args...> &tuple) {
         check_buf_end();
@@ -418,20 +449,22 @@ public:
     }
 };
 
-class TarantoolConnector : private TntNet {
-    int64_t call_function(const std::string &name, struct tnt_stream *tuple) {
-        struct tnt_request *request = tnt_request_call(NULL);
+class ResultParser {
+    SmartTntIStream stream;
 
-        tnt_request_set_funcz(request, name.c_str());
-        tnt_request_set_tuple(request, tuple);
-
-        int64_t result = tnt_request_compile(stream, request);
-
-        tnt_request_free(request);
-        tnt_flush(stream);
-
-        return result;
+public:
+    ResultParser(TntNet &tnt_net) : stream(tnt_net) {
+        ;
     }
+
+    template <class ...Args>
+    void parse(Args& ...args) {
+        stream >> std::tie(args...);
+    }
+};
+
+
+class TarantoolConnector : private TntNet {
 
 public:
     TarantoolConnector(const std::string &addr, const std::string &port) {
@@ -449,15 +482,6 @@ public:
         tnt_close(stream);
     }
 
-    template<class Tuple>
-    void call2(const std::string &name, ConstTupleTntObject args, Tuple tuple) {
-        TntRequest request;
-        request.call(name, args, *this);
-
-        SmartTntIStream reply(*this);
-        reply >> tuple;
-    }
-
     template<class... Args>
     std::tuple<Args...> call(const std::string &name, ConstTupleTntObject args) {
         TntRequest request;
@@ -469,10 +493,10 @@ public:
         return tuple;
     }
 
-    void call(const std::string &name, ConstTupleTntObject args) {
+    ResultParser call(const std::string &name, ConstTupleTntObject args) {
         TntRequest request;
         request.call(name, args, *this);
-        SmartTntIStream reply(*this);
+        return {*this};
     }
 };
 
