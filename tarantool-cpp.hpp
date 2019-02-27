@@ -274,19 +274,14 @@ public:
 };
 
 
-template <class MapKey>
-class Map {
+template <class Functor>
+class MapParser {
 public:
-    template <class Functor>
-    class MapParser {
-    public:
-        typedef MapKey Key;
-        Functor func;
+    Functor func;
 
-        MapParser(Functor func_) : func(func_) {
-            ;
-        }
-    };
+    MapParser(Functor func_) : func(func_) {
+        ;
+    }
 };
 
 
@@ -294,6 +289,7 @@ class SmartTntIStream;
 
 
 class MapValue {
+    friend class MapKey;
     SmartTntIStream &stream;
     bool got = false;
 
@@ -319,8 +315,37 @@ public:
 };
 
 
+class MapKey {
+    SmartTntIStream &stream;
+    bool got = false;
+
+public:
+    MapKey(SmartTntIStream &stream_) : stream(stream_), got(false) {
+        ;
+    }
+    MapKey(const MapKey &other) = delete;
+    MapKey(MapKey &&other) = delete;
+    MapKey& operator=(const MapKey &other) = delete;
+    MapKey& operator=(MapKey &&other) = delete;
+
+    ~MapKey() {
+        if (!got) {
+            ignore();
+        }
+    }
+
+    template <class Value>
+    MapValue load(Value &value);
+
+    void ignore();
+
+    int type() const;
+};
+
+
 class SmartTntIStream : public TntReply {
     friend class MapValue;
+    friend class MapKey;
 
     template<class Tuple, size_t N>
     class StreamHelper {
@@ -666,11 +691,9 @@ public:
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_MAP");
         }
         size_t size = mp_decode_map(&data);
-        typename MapParser::Key key;
         for (size_t i = 0; i != size; ++i) {
-            *this >> key;
-            MapValue value(*this);
-            map_parser.func(key, value);
+            MapKey key(*this);
+            map_parser.func(key);
         }
         return *this;
     }
@@ -679,13 +702,42 @@ public:
 
 template <class Value>
 void MapValue::load(Value &value) {
+    if (got) {
+        throw std::logic_error("Double read from MapValue");
+    }
     stream >> value;
     got = true;
 }
 
 void MapValue::ignore() {
+    if (got) {
+        throw std::logic_error("Double ignor MapValue");
+    }
     stream.ignore();
     got = true;
+}
+
+template <class Value>
+MapValue MapKey::load(Value &value) {
+    if (got) {
+        throw std::logic_error("Double read from MapKey");
+    }
+    stream >> value;
+    got = true;
+    return {stream};
+}
+
+void MapKey::ignore() {
+    if (got) {
+        throw std::logic_error("Double ignor MapKey");
+    }
+    stream.ignore();  // Ignore key
+    stream.ignore();  // Ignore value too
+    got = true;
+}
+
+int MapKey::type() const {
+    return mp_typeof(*stream.data);
 }
 
 

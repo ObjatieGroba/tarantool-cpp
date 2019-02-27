@@ -195,10 +195,12 @@ void tables_example() {
     TarantoolConnector tnt("127.0.0.1", "10001");
     std::string str;
     int num;
-    Map<std::string>::MapParser str_parser([&] (const std::string &key, MapValue &value) {
-        if (key == "F1") {
+    MapParser str_parser([&] (MapKey &key) {
+        std::string str_key;
+        auto value = key.load(str_key);
+        if (str_key == "F1") {
             value.load(str);
-        } else if (key == "F2") {
+        } else if (str_key == "F2") {
             value.load(num);
         }
     });
@@ -207,10 +209,12 @@ void tables_example() {
     assert(num == 1);
     assert(str == "DATA");
 
-    Map<int>::MapParser int_parser([&] (int key, MapValue &value) {
-        if (key == 10) {
+    MapParser int_parser([&] (MapKey &key) {
+        int int_key;
+        auto value = key.load(int_key);
+        if (int_key == 10) {
             value.load(str);
-        } else if (key == 100) {
+        } else if (int_key == 100) {
             value.load(num);
         } else {
             value.ignore();
@@ -219,6 +223,34 @@ void tables_example() {
     auto result2 = tnt.call("num_table", {1});
     result2.parse(int_parser);
     assert(num == 1);
+    assert(str == "DATA");
+}
+
+void complex_table_example() {
+    std::string str;
+    int num;
+    TarantoolConnector tnt("127.0.0.1", "10001");
+    MapParser parser([&] (MapKey &key) {
+        int ikey;
+        std::string skey;
+        switch (key.type()) {
+            case MP_STR: {
+                auto svalue = key.load(skey);
+                assert(skey == "DATA");
+                svalue.load(num);
+                break;
+            }
+            case MP_UINT: {
+                auto ivalue = key.load(ikey);
+                assert(ikey == 2);
+                ivalue.load(str);
+                break;
+            }
+        }
+    });
+    auto result2 = tnt.call("mix_table", {1});
+    result2.parse(parser);
+    assert(num == 2);
     assert(str == "DATA");
 }
 
@@ -232,4 +264,5 @@ int main() {
     test_box_tuple();
     class_example();
     tables_example();
+    complex_table_example();
 }

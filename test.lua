@@ -40,3 +40,10 @@ function num_table()
     t[2] = 3
     return t
 end
+
+function mix_table()
+    local t = {}
+    t[2] = "DATA"
+    t["DATA"] = 2
+    return t
+end
