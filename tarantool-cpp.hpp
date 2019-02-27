@@ -182,13 +182,27 @@ public:
         return *this;
     }
 
+    SmartTntOStream &operator<<(float value) {
+        tnt_object_add_float(stream, value);
+        return *this;
+    }
+
+    SmartTntOStream &operator<<(double value) {
+        tnt_object_add_double(stream, value);
+        return *this;
+    }
+
     SmartTntOStream &operator<<(const std::string &value) {
         tnt_object_add_str(stream, value.c_str(), static_cast<uint32_t>(value.size()));
         return *this;
     }
 
     SmartTntOStream &operator<<(const char *value) {
-        tnt_object_add_str(stream, value, static_cast<uint32_t>(strlen(value)));
+        if (value == nullptr) {
+            tnt_object_add_nil(stream);
+        } else {
+            tnt_object_add_str(stream, value, static_cast<uint32_t>(strlen(value)));
+        }
         return *this;
     }
 
@@ -205,6 +219,16 @@ public:
         for (auto &&elem : value) {
             *this << elem;
         }
+        return *this;
+    }
+
+    SmartTntOStream &operator<<(const std::vector<signed char> &value) {
+        tnt_object_add_bin(stream, value.data(), static_cast<unsigned>(value.size()));
+        return *this;
+    }
+
+    SmartTntOStream &operator<<(const std::vector<unsigned char> &value) {
+        tnt_object_add_bin(stream, value.data(), static_cast<unsigned>(value.size()));
         return *this;
     }
 
@@ -228,6 +252,11 @@ public:
         } else {
             tnt_object_add_nil(stream);
         }
+        return *this;
+    }
+
+    SmartTntOStream &operator<<(std::nullopt_t null) {
+        tnt_object_add_nil(stream);
         return *this;
     }
 #endif
@@ -288,6 +317,16 @@ public:
         return *this;
     }
 
+    SmartTntIStream &operator>>(bool &value) {
+        check_buf_end();
+        auto type = mp_typeof(*data);
+        if (type != MP_BOOL) {
+            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_BOOL");
+        }
+        value = mp_decode_bool(&data);
+        return *this;
+    }
+
     SmartTntIStream &operator>>(short &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
@@ -300,7 +339,7 @@ public:
                 break;
             default:
                 throw type_error(
-                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT ot MP_UINT");
+                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
         }
         return *this;
     }
@@ -327,7 +366,7 @@ public:
                 break;
             default:
                 throw type_error(
-                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT ot MP_UINT");
+                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
         }
         return *this;
     }
@@ -337,6 +376,33 @@ public:
         auto type = mp_typeof(*data);
         if (type == MP_UINT) {
             value = static_cast<unsigned>(mp_decode_uint(&data));
+            return *this;
+        }
+        throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_UINT");
+    }
+
+    SmartTntIStream &operator>>(long &value) {
+        check_buf_end();
+        auto type = mp_typeof(*data);
+        switch (type) {
+            case MP_INT:
+                value = static_cast<long>(mp_decode_int(&data));
+                break;
+            case MP_UINT:
+                value = static_cast<long>(mp_decode_uint(&data));
+                break;
+            default:
+                throw type_error(
+                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
+        }
+        return *this;
+    }
+
+    SmartTntIStream &operator>>(unsigned long &value) {
+        check_buf_end();
+        auto type = mp_typeof(*data);
+        if (type == MP_UINT) {
+            value = static_cast<unsigned long>(mp_decode_uint(&data));
             return *this;
         }
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_UINT");
@@ -354,7 +420,7 @@ public:
                 break;
             default:
                 throw type_error(
-                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT ot MP_UINT");
+                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
         }
         return *this;
     }
@@ -367,6 +433,26 @@ public:
             return *this;
         }
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_UINT");
+    }
+
+    SmartTntIStream &operator>>(float &value) {
+        check_buf_end();
+        auto type = mp_typeof(*data);
+        if (type == MP_FLOAT) {
+            value = mp_decode_float(&data);
+            return *this;
+        }
+        throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_FLOAT");
+    }
+
+    SmartTntIStream &operator>>(double &value) {
+        check_buf_end();
+        auto type = mp_typeof(*data);
+        if (type == MP_DOUBLE) {
+            value = mp_decode_double(&data);
+            return *this;
+        }
+        throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_DOUBLE");
     }
 
 #ifdef BOOST_OPTIONAL_OPTIONAL_FLC_19NOV2002_HPP
@@ -445,6 +531,32 @@ public:
         for (size_t i = 0; i != size; ++i) {
             *this >> vector[i];
         }
+        return *this;
+    }
+
+    SmartTntIStream &operator>>(std::vector<signed char> &vector) {
+        check_buf_end();
+        auto type = mp_typeof(*data);
+        if (type != MP_BIN) {
+            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_BIN");
+        }
+        uint32_t len;
+        const char *data = mp_decode_bin(&data, &len);
+        vector.resize(len);
+        std::memcpy(vector.data(), data, len);
+        return *this;
+    }
+
+    SmartTntIStream &operator>>(std::vector<unsigned char> &vector) {
+        check_buf_end();
+        auto type = mp_typeof(*data);
+        if (type != MP_BIN) {
+            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_BIN");
+        }
+        uint32_t len;
+        const char *data = mp_decode_bin(&data, &len);
+        vector.resize(len);
+        std::memcpy(vector.data(), data, len);
         return *this;
     }
 };
