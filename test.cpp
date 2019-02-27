@@ -191,6 +191,37 @@ void class_example() {
     assert(tuple.s1 == tuple.s4);
 }
 
+void tables_example() {
+    TarantoolConnector tnt("127.0.0.1", "10001");
+    std::string str;
+    int num;
+    Map<std::string>::MapParser str_parser([&] (const std::string &key, MapValue &value) {
+        if (key == "F1") {
+            value.load(str);
+        } else if (key == "F2") {
+            value.load(num);
+        }
+    });
+    auto result = tnt.call("str_table", {1});
+    result.parse(str_parser);
+    assert(num == 1);
+    assert(str == "DATA");
+
+    Map<int>::MapParser int_parser([&] (int key, MapValue &value) {
+        if (key == 10) {
+            value.load(str);
+        } else if (key == 100) {
+            value.load(num);
+        } else {
+            value.ignore();
+        }
+    });
+    auto result2 = tnt.call("num_table", {1});
+    result2.parse(int_parser);
+    assert(num == 1);
+    assert(str == "DATA");
+}
+
 int main() {
     // test1();
     test2();
@@ -200,4 +231,5 @@ int main() {
     test_errors();
     test_box_tuple();
     class_example();
+    tables_example();
 }

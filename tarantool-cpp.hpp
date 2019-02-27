@@ -116,6 +116,7 @@ public:
     }
 };
 
+
 class SmartTntOStream : public TntObject {
 private:
     template<class Tuple, size_t N>
@@ -137,67 +138,67 @@ private:
 
 public:
 
-    SmartTntOStream &operator<<(bool value) {
+    SmartTntOStream& operator<<(bool value) {
         tnt_object_add_bool(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(short value) {
+    SmartTntOStream& operator<<(short value) {
         tnt_object_add_int(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(unsigned short value) {
+    SmartTntOStream& operator<<(unsigned short value) {
         tnt_object_add_uint(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(int value) {
+    SmartTntOStream& operator<<(int value) {
         tnt_object_add_int(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(unsigned int value) {
+    SmartTntOStream& operator<<(unsigned int value) {
         tnt_object_add_uint(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(long value) {
+    SmartTntOStream& operator<<(long value) {
         tnt_object_add_int(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(unsigned long value) {
+    SmartTntOStream& operator<<(unsigned long value) {
         tnt_object_add_uint(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(long long value) {
+    SmartTntOStream& operator<<(long long value) {
         tnt_object_add_int(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(unsigned long long value) {
+    SmartTntOStream& operator<<(unsigned long long value) {
         tnt_object_add_uint(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(float value) {
+    SmartTntOStream& operator<<(float value) {
         tnt_object_add_float(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(double value) {
+    SmartTntOStream& operator<<(double value) {
         tnt_object_add_double(stream, value);
         return *this;
     }
 
-    SmartTntOStream &operator<<(const std::string &value) {
+    SmartTntOStream& operator<<(const std::string &value) {
         tnt_object_add_str(stream, value.c_str(), static_cast<uint32_t>(value.size()));
         return *this;
     }
 
-    SmartTntOStream &operator<<(const char *value) {
+    SmartTntOStream& operator<<(const char *value) {
         if (value == nullptr) {
             tnt_object_add_nil(stream);
         } else {
@@ -207,14 +208,14 @@ public:
     }
 
     template<typename... Args>
-    SmartTntOStream &operator<<(const std::tuple<Args...> &value) {
+    SmartTntOStream& operator<<(const std::tuple<Args...> &value) {
         tnt_object_add_array(stream, std::tuple_size<std::tuple<Args...>>::value);
         StreamHelper<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, value);
         return *this;
     }
 
     template<class T>
-    SmartTntOStream &operator<<(const std::vector<T> &value) {
+    SmartTntOStream& operator<<(const std::vector<T> &value) {
         tnt_object_add_array(stream, static_cast<unsigned>(value.size()));
         for (auto &&elem : value) {
             *this << elem;
@@ -222,12 +223,12 @@ public:
         return *this;
     }
 
-    SmartTntOStream &operator<<(const std::vector<signed char> &value) {
+    SmartTntOStream& operator<<(const std::vector<signed char> &value) {
         tnt_object_add_bin(stream, value.data(), static_cast<unsigned>(value.size()));
         return *this;
     }
 
-    SmartTntOStream &operator<<(const std::vector<unsigned char> &value) {
+    SmartTntOStream& operator<<(const std::vector<unsigned char> &value) {
         tnt_object_add_bin(stream, value.data(), static_cast<unsigned>(value.size()));
         return *this;
     }
@@ -246,7 +247,7 @@ public:
 
 #if __cplusplus > 201402L
     template<class T>
-    SmartTntOStream &operator<<(const std::optional<T> &value) {
+    SmartTntOStream& operator<<(const std::optional<T> &value) {
         if (value) {
             *this << value.value();
         } else {
@@ -255,13 +256,14 @@ public:
         return *this;
     }
 
-    SmartTntOStream &operator<<(std::nullopt_t null) {
+    SmartTntOStream& operator<<(std::nullopt_t null) {
         tnt_object_add_nil(stream);
         return *this;
     }
 #endif
 
 };
+
 
 class ConstTupleTntObject : public SmartTntOStream {
 public:
@@ -271,7 +273,55 @@ public:
     }
 };
 
+
+template <class MapKey>
+class Map {
+public:
+    template <class Functor>
+    class MapParser {
+    public:
+        typedef MapKey Key;
+        Functor func;
+
+        MapParser(Functor func_) : func(func_) {
+            ;
+        }
+    };
+};
+
+
+class SmartTntIStream;
+
+
+class MapValue {
+    SmartTntIStream &stream;
+    bool got = false;
+
+public:
+    MapValue(SmartTntIStream &stream_) : stream(stream_), got(false) {
+        ;
+    }
+    MapValue(const MapValue &other) = delete;
+    MapValue(MapValue &&other) = delete;
+    MapValue& operator=(const MapValue &other) = delete;
+    MapValue& operator=(MapValue &&other) = delete;
+
+    ~MapValue() {
+        if (!got) {
+            ignore();
+        }
+    }
+
+    template <class Value>
+    void load(Value &value);
+
+    void ignore();
+};
+
+
 class SmartTntIStream : public TntReply {
+    friend class MapValue;
+
     template<class Tuple, size_t N>
     class StreamHelper {
     public:
@@ -298,6 +348,54 @@ class SmartTntIStream : public TntReply {
         }
     }
 
+    // Ignore current element
+    void ignore() {
+        check_buf_end();
+        auto type = mp_typeof(*data);
+        uint32_t len;
+        switch (type) {
+            case MP_NIL:
+                mp_decode_nil(&data);
+                break;
+            case MP_UINT:
+                mp_decode_uint(&data);
+                break;
+            case MP_INT:
+                mp_decode_int(&data);
+                break;
+            case MP_STR:
+                mp_decode_str(&data, &len);
+                break;
+            case MP_BIN:
+                mp_decode_bin(&data, &len);
+                break;
+            case MP_ARRAY:
+                len = mp_decode_array(&data);
+                for (uint32_t i = 0; i != len; ++i) {
+                    ignore();
+                }
+                break;
+            case MP_MAP:
+                len = mp_decode_map(&data);
+                for (uint32_t i = 0; i != len; ++i) {
+                    ignore();  // Ignore Key
+                    ignore();  // Ignore Value
+                }
+                break;
+            case MP_BOOL:
+                mp_decode_bool(&data);
+                break;
+            case MP_FLOAT:
+                mp_decode_float(&data);
+                break;
+            case MP_DOUBLE:
+                mp_decode_double(&data);
+                break;
+            default:
+                throw type_error("Unknown type to ignore: " + std::to_string(static_cast<int>(type)));
+        }
+    }
+
 public:
     explicit SmartTntIStream(TntNet &tnt_net) {
         read_reply(tnt_net);
@@ -305,7 +403,7 @@ public:
         end = data + reply->buf_size;
     }
 
-    SmartTntIStream &operator>>(std::string &value) {
+    SmartTntIStream& operator>>(std::string &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_STR) {
@@ -317,7 +415,7 @@ public:
         return *this;
     }
 
-    SmartTntIStream &operator>>(bool &value) {
+    SmartTntIStream& operator>>(bool &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_BOOL) {
@@ -327,7 +425,7 @@ public:
         return *this;
     }
 
-    SmartTntIStream &operator>>(short &value) {
+    SmartTntIStream& operator>>(short &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         switch (type) {
@@ -344,7 +442,7 @@ public:
         return *this;
     }
 
-    SmartTntIStream &operator>>(unsigned short &value) {
+    SmartTntIStream& operator>>(unsigned short &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type == MP_UINT) {
@@ -354,7 +452,7 @@ public:
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_UINT");
     }
 
-    SmartTntIStream &operator>>(int &value) {
+    SmartTntIStream& operator>>(int &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         switch (type) {
@@ -371,7 +469,7 @@ public:
         return *this;
     }
 
-    SmartTntIStream &operator>>(unsigned int &value) {
+    SmartTntIStream& operator>>(unsigned int &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type == MP_UINT) {
@@ -381,7 +479,7 @@ public:
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_UINT");
     }
 
-    SmartTntIStream &operator>>(long &value) {
+    SmartTntIStream& operator>>(long &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         switch (type) {
@@ -398,7 +496,7 @@ public:
         return *this;
     }
 
-    SmartTntIStream &operator>>(unsigned long &value) {
+    SmartTntIStream& operator>>(unsigned long &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type == MP_UINT) {
@@ -408,7 +506,7 @@ public:
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_UINT");
     }
 
-    SmartTntIStream &operator>>(long long &value) {
+    SmartTntIStream& operator>>(long long &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         switch (type) {
@@ -425,7 +523,7 @@ public:
         return *this;
     }
 
-    SmartTntIStream &operator>>(unsigned long long &value) {
+    SmartTntIStream& operator>>(unsigned long long &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type == MP_UINT) {
@@ -435,7 +533,7 @@ public:
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_UINT");
     }
 
-    SmartTntIStream &operator>>(float &value) {
+    SmartTntIStream& operator>>(float &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type == MP_FLOAT) {
@@ -445,7 +543,7 @@ public:
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_FLOAT");
     }
 
-    SmartTntIStream &operator>>(double &value) {
+    SmartTntIStream& operator>>(double &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type == MP_DOUBLE) {
@@ -473,7 +571,7 @@ public:
 
 #if __cplusplus > 201402L
     template<class T>
-    SmartTntIStream &operator>>(std::optional<T> &value) {
+    SmartTntIStream& operator>>(std::optional<T> &value) {
         check_buf_end();
         if (mp_typeof(*data) == MP_NIL) {
             mp_decode_nil(&data);
@@ -488,7 +586,7 @@ public:
 #endif
 
     template<typename... Args>
-    SmartTntIStream &operator>>(std::tuple<Args...> &tuple) {
+    SmartTntIStream& operator>>(std::tuple<Args...> &tuple) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_ARRAY) {
@@ -504,7 +602,7 @@ public:
     }
     
     template<typename... Args>
-    SmartTntIStream &operator>>(std::tuple<Args&...> tuple) {
+    SmartTntIStream& operator>>(std::tuple<Args&...> tuple) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_ARRAY) {
@@ -520,7 +618,7 @@ public:
     }
 
     template<class T>
-    SmartTntIStream &operator>>(std::vector<T> &vector) {
+    SmartTntIStream& operator>>(std::vector<T> &vector) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_ARRAY) {
@@ -534,7 +632,7 @@ public:
         return *this;
     }
 
-    SmartTntIStream &operator>>(std::vector<signed char> &vector) {
+    SmartTntIStream& operator>>(std::vector<signed char> &vector) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_BIN) {
@@ -547,7 +645,7 @@ public:
         return *this;
     }
 
-    SmartTntIStream &operator>>(std::vector<unsigned char> &vector) {
+    SmartTntIStream& operator>>(std::vector<unsigned char> &vector) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_BIN) {
@@ -559,7 +657,37 @@ public:
         std::memcpy(vector.data(), data, len);
         return *this;
     }
+
+    template <class MapParser>
+    SmartTntIStream& operator>>(MapParser &map_parser) {
+        check_buf_end();
+        auto type = mp_typeof(*data);
+        if (type != MP_MAP) {
+            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_MAP");
+        }
+        size_t size = mp_decode_map(&data);
+        typename MapParser::Key key;
+        for (size_t i = 0; i != size; ++i) {
+            *this >> key;
+            MapValue value(*this);
+            map_parser.func(key, value);
+        }
+        return *this;
+    }
 };
+
+
+template <class Value>
+void MapValue::load(Value &value) {
+    stream >> value;
+    got = true;
+}
+
+void MapValue::ignore() {
+    stream.ignore();
+    got = true;
+}
+
 
 class ResultParser {
     SmartTntIStream stream;
