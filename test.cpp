@@ -45,37 +45,37 @@ using namespace tarantool;
 
 void test2() {
     TarantoolConnector tnt("127.0.0.1", "10001");
-    
+
     int od = -3;
     unsigned ox = 4;
     std::string of("test");
-    
+
     int d;
     unsigned x;
     std::string f;
-    
+
     auto result = tnt.call("test2", {od, ox});
     result.parse(x, d, f);
-    
+
     assert(od == d);
     assert(ox == x);
-    
+
     assert(of == f);
 }
 
 void test3() {
     TarantoolConnector tnt("127.0.0.1", "10001");
-    
+
     int od = 3, oa = -1, ob = -2, oc = -3;
     unsigned ox = 4;
-    
+
     std::string os("STR");
     std::string name("testing");
-    
+
     int a, b, c, d;
     unsigned x;
     std::string s1, s2, s3;
-    
+
     auto t1 = std::tie(a, b, c);
     auto t2 = std::tie(d, x);
     auto t3 = std::tie(s1, s2);
@@ -84,16 +84,16 @@ void test3() {
             std::tuple<int, unsigned>,
             std::tuple<std::string, std::string>,
             std::string>("test3", {od, ox, os, std::make_tuple(oa, ob, oc)});
-    
+
     assert(oa == a);
     assert(ob == b);
     assert(oc == c);
     assert(od == d);
     assert(ox == x);
-    
+
     assert(os == s1);
     assert(os == s2);
-    
+
     assert(name == s3);
 }
 
@@ -195,7 +195,7 @@ void tables_example() {
     TarantoolConnector tnt("127.0.0.1", "10001");
     std::string str;
     int num;
-    MapParser str_parser([&] (MapKey &key) {
+    Map::Parser str_parser([&] (Map::Key &key) {
         std::string str_key;
         auto value = key.load(str_key);
         if (str_key == "F1") {
@@ -209,7 +209,7 @@ void tables_example() {
     assert(num == 1);
     assert(str == "DATA");
 
-    MapParser int_parser([&] (MapKey &key) {
+    Map::Parser int_parser([&] (Map::Key &key) {
         int int_key;
         auto value = key.load(int_key);
         if (int_key == 10) {
@@ -230,20 +230,20 @@ void complex_table_example() {
     std::string str;
     int num;
     TarantoolConnector tnt("127.0.0.1", "10001");
-    MapParser parser([&] (MapKey &key) {
+    Map::Parser parser([&] (Map::Key &key) {
         int ikey;
         std::string skey;
         switch (key.type()) {
             case MP_STR: {
-                auto svalue = key.load(skey);
+                auto value = key.load(skey);
                 assert(skey == "DATA");
-                svalue.load(num);
+                value.load(num);
                 break;
             }
             case MP_UINT: {
-                auto ivalue = key.load(ikey);
+                auto value = key.load(ikey);
                 assert(ikey == 2);
-                ivalue.load(str);
+                value.load(str);
                 break;
             }
         }
@@ -252,6 +252,31 @@ void complex_table_example() {
     result2.parse(parser);
     assert(num == 2);
     assert(str == "DATA");
+}
+
+void map_write() {
+    Map::ConstMap m1("key", "value", "other_key", "other_value");
+    Map::ConstMap m2("key2", 2);
+    auto m = Map::ConstMapCat(m1, m2);
+
+    std::string str;
+    unsigned num;
+
+    TarantoolConnector tnt("127.0.0.1", "10001");
+    Map::Parser parser([&] (Map::Key &key) {
+        std::string skey;
+        auto value = key.load(skey);
+        if (skey == "key") {
+            value.load(str);
+        } else if (skey == "key2") {
+            value.load(num);
+        }
+    });
+    auto result2 = tnt.call("same", {m});
+    result2.parse(parser);
+    assert(num == 2);
+    assert(str == "value");
+
 }
 
 int main() {
@@ -265,4 +290,5 @@ int main() {
     class_example();
     tables_example();
     complex_table_example();
+    map_write();
 }

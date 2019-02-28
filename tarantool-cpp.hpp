@@ -36,6 +36,10 @@ public:
     explicit TntStream(struct tnt_stream *stream_) : stream(stream_) {
         ;
     }
+    TntStream(const TntStream &other) = delete;
+    TntStream& operator=(const TntStream &other) = delete;
+    TntStream(TntStream &&other) = delete;
+    TntStream& operator=(TntStream &&other) = delete;
 
     ~TntStream() {
         if (stream) {
@@ -52,6 +56,10 @@ public:
             throw std::runtime_error("Can not create tnt object.");
         }
     }
+    TntObject(const TntObject &other) = delete;
+    TntObject& operator=(const TntObject &other) = delete;
+    TntObject(TntObject &&other) = delete;
+    TntObject& operator=(TntObject &&other) = delete;
 };
 
 class TntNet : public TntStream {
@@ -64,6 +72,10 @@ public:
             throw std::runtime_error("Can not create tnt net");
         }
     }
+    TntNet(const TntNet &other) = delete;
+    TntNet& operator=(const TntNet &other) = delete;
+    TntNet(TntNet &&other) = delete;
+    TntNet& operator=(TntNet &&other) = delete;
 };
 
 class TntReply {
@@ -76,6 +88,10 @@ public:
             throw std::runtime_error("Can not create tnt reply");
         }
     }
+    TntReply(const TntReply &other) = delete;
+    TntReply& operator=(const TntReply &other) = delete;
+    TntReply(TntReply &&other) = delete;
+    TntReply& operator=(TntReply &&other) = delete;
 
     ~TntReply() {
         tnt_reply_free(reply);
@@ -101,6 +117,10 @@ public:
             throw std::runtime_error("Can not create tnt request");
         }
     }
+    TntRequest(const TntRequest &other) = delete;
+    TntRequest& operator=(const TntRequest &other) = delete;
+    TntRequest(TntRequest &&other) = delete;
+    TntRequest& operator=(TntRequest &&other) = delete;
 
     ~TntRequest() {
         tnt_request_free(request);
@@ -115,6 +135,107 @@ public:
         tnt_flush(tnt_net.stream);
     }
 };
+
+
+class SmartTntOStream;
+class SmartTntIStream;
+
+
+namespace Map {
+
+
+    template <class ...Args>
+    class ConstMap {
+        template <class ...Maps>
+        friend constexpr auto ConstMapCat(Maps&& ...maps);
+        friend class tarantool::SmartTntOStream;
+
+        const std::tuple<Args...> data;
+
+        constexpr ConstMap(std::tuple<Args...> data_) : data(data_) {
+            ;
+        }
+
+    public:
+        constexpr ConstMap(Args ...args) : data(args...) {
+            static_assert(sizeof...(args) % 2 == 0, "Map constructor must have even length");
+        }
+    };
+
+
+    template <class ...Maps>
+    constexpr auto ConstMapCat(Maps&& ...maps) {
+        return ConstMap(std::tuple_cat(maps.data...));
+    }
+
+
+    template <class Functor>
+    class Parser {
+    public:
+        Functor func;
+
+        Parser(Functor func_) : func(func_) {
+            ;
+        }
+    };
+
+
+    class Value {
+        friend class Key;
+        SmartTntIStream &stream;
+        bool got = false;
+
+    public:
+        Value(SmartTntIStream &stream_) : stream(stream_), got(false) {
+            ;
+        }
+        Value(const Value &other) = delete;
+        Value(Value &&other) = delete;
+        Value& operator=(const Value &other) = delete;
+        Value& operator=(Value &&other) = delete;
+
+        ~Value() {
+            if (!got) {
+                ignore();
+            }
+        }
+
+        template <class T>
+        void load(T &value);
+
+        void ignore();
+    };
+
+
+    class Key {
+        SmartTntIStream &stream;
+        bool got = false;
+
+    public:
+        Key(SmartTntIStream &stream_) : stream(stream_), got(false) {
+            ;
+        }
+        Key(const Key &other) = delete;
+        Key(Key &&other) = delete;
+        Key& operator=(const Key &other) = delete;
+        Key& operator=(Key &&other) = delete;
+
+        ~Key() {
+            if (!got) {
+                ignore();
+            }
+        }
+
+        template <class T>
+        Value load(T &value);
+
+        void ignore();
+
+        int type() const;
+    };
+
+
+} // end of namespace Map
 
 
 class SmartTntOStream : public TntObject {
@@ -262,6 +383,13 @@ public:
     }
 #endif
 
+    template <class ...Args>
+    SmartTntOStream& operator<<(const Map::ConstMap<Args...> &map) {
+        tnt_object_add_map(stream, sizeof...(Args) / 2);
+        StreamHelper<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, map.data);
+        return *this;
+    }
+
 };
 
 
@@ -274,78 +402,9 @@ public:
 };
 
 
-template <class Functor>
-class MapParser {
-public:
-    Functor func;
-
-    MapParser(Functor func_) : func(func_) {
-        ;
-    }
-};
-
-
-class SmartTntIStream;
-
-
-class MapValue {
-    friend class MapKey;
-    SmartTntIStream &stream;
-    bool got = false;
-
-public:
-    MapValue(SmartTntIStream &stream_) : stream(stream_), got(false) {
-        ;
-    }
-    MapValue(const MapValue &other) = delete;
-    MapValue(MapValue &&other) = delete;
-    MapValue& operator=(const MapValue &other) = delete;
-    MapValue& operator=(MapValue &&other) = delete;
-
-    ~MapValue() {
-        if (!got) {
-            ignore();
-        }
-    }
-
-    template <class Value>
-    void load(Value &value);
-
-    void ignore();
-};
-
-
-class MapKey {
-    SmartTntIStream &stream;
-    bool got = false;
-
-public:
-    MapKey(SmartTntIStream &stream_) : stream(stream_), got(false) {
-        ;
-    }
-    MapKey(const MapKey &other) = delete;
-    MapKey(MapKey &&other) = delete;
-    MapKey& operator=(const MapKey &other) = delete;
-    MapKey& operator=(MapKey &&other) = delete;
-
-    ~MapKey() {
-        if (!got) {
-            ignore();
-        }
-    }
-
-    template <class Value>
-    MapValue load(Value &value);
-
-    void ignore();
-
-    int type() const;
-};
-
-
 class SmartTntIStream : public TntReply {
-    friend class MapValue;
-    friend class MapKey;
+    friend class Map::Value;
+    friend class Map::Key;
 
     template<class Tuple, size_t N>
     class StreamHelper {
@@ -692,7 +751,7 @@ public:
         }
         size_t size = mp_decode_map(&data);
         for (size_t i = 0; i != size; ++i) {
-            MapKey key(*this);
+            Map::Key key(*this);
             map_parser.func(key);
         }
         return *this;
@@ -700,43 +759,43 @@ public:
 };
 
 
-template <class Value>
-void MapValue::load(Value &value) {
+template <class T>
+void Map::Value::load(T &value) {
     if (got) {
-        throw std::logic_error("Double read from MapValue");
+        throw std::logic_error("Double read from Value");
     }
     stream >> value;
     got = true;
 }
 
-void MapValue::ignore() {
+void Map::Value::ignore() {
     if (got) {
-        throw std::logic_error("Double ignor MapValue");
+        throw std::logic_error("Double ignor Value");
     }
     stream.ignore();
     got = true;
 }
 
-template <class Value>
-MapValue MapKey::load(Value &value) {
+template <class T>
+Map::Value Map::Key::load(T &value) {
     if (got) {
-        throw std::logic_error("Double read from MapKey");
+        throw std::logic_error("Double read from Key");
     }
     stream >> value;
     got = true;
     return {stream};
 }
 
-void MapKey::ignore() {
+void Map::Key::ignore() {
     if (got) {
-        throw std::logic_error("Double ignor MapKey");
+        throw std::logic_error("Double ignor Key");
     }
     stream.ignore();  // Ignore key
     stream.ignore();  // Ignore value too
     got = true;
 }
 
-int MapKey::type() const {
+int Map::Key::type() const {
     return mp_typeof(*stream.data);
 }
 
