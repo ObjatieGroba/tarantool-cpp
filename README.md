@@ -18,7 +18,7 @@ tie(str, num) = tnt.call<optional<string>, int>("func_name", {3, 4, 5, "arg"});
 ```
 
 # Support types
-- int and unsinged int (16, 32, 64 bits)
+- int and unsigned int (16, 32, 64 bits)
 - bool
 - string
 - float, double
@@ -32,16 +32,14 @@ Custom classes expressed through basic
 
 # F.A.Q.
 
-- Why don't we use std::variant?
+- Why doesn't tarantool-cpp use std::variant?
 
-  It is hard to resolve a type of variable by first char of MsgPack elements. There are only 7 basic types of stored data. We can add variant for basic types, but for others we have to emplement recursive brute force. 
+  It is hard to resolve a type of variable by the first char of MsgPack elements. There are only 7 basic types of stored data. We can add variant for basic types, but for others we have to emplement recursive brute force. 
 
-- Is it thread save?
+- Is it thread safe?
 
   No
 
 - Is it compatible with C++11?
 
-  Yes.
-  
-  There are a lot of cases where using std::optional is necessary. Therefore, we recommend to use c++17 (or boost::optional).
+  Yes, but we recommend to use c++17 (or boost::optional), because there are many cases where using std::optional is necessary. 
