@@ -254,7 +254,7 @@ void complex_table_example() {
     assert(str == "DATA");
 }
 
-void map_write() {
+void map_write_example() {
     Map::ConstMap m1("key", "value", "other_key", "other_value");
     Map::ConstMap m2("key2", 2);
     auto m = Map::ConstMapCat(m1, m2);
@@ -276,7 +276,38 @@ void map_write() {
     result2.parse(parser);
     assert(num == 2);
     assert(str == "value");
+}
 
+void binobject_example() {
+    TarantoolConnector tnt("127.0.0.1", "10001");
+
+    MsgPackBin::ConstObject obj(Map::ConstMap("x", 0));
+
+    std::vector<char> data;
+
+    auto result = tnt.call("same", {obj});
+    result.parse(data);
+
+    assert(data.size() == 4);
+}
+
+void binobject_example2() {
+    TarantoolConnector tnt("127.0.0.1", "10001");
+
+    MsgPackBin::ConstObject obj(std::make_tuple("abc", 3));
+
+    std::string abc;
+    int n;
+
+    auto data = std::tie(abc, n);
+
+    MsgPackBin::Parser parser(data);
+
+    auto result = tnt.call("same", {obj});
+    result.parse(parser);
+
+    assert("abc" == abc);
+    assert(n == 3);
 }
 
 int main() {
@@ -290,5 +321,7 @@ int main() {
     class_example();
     tables_example();
     complex_table_example();
-    map_write();
+    map_write_example();
+    binobject_example();
+    binobject_example2();
 }

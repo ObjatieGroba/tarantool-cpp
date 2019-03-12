@@ -1,6 +1,15 @@
-#include <tuple>
+#ifndef TARANTOOL_CPP_INCLUED
+#define TARANTOOL_CPP_INCLUED
 
+#include <vector>
+#include <string>
+#include <stdexcept>
+#include <tuple>
 #include <cstring>
+
+#if __cplusplus > 201402L
+#include <optional>
+#endif
 
 extern "C" {
 #include <tarantool/tarantool.h>
@@ -10,14 +19,6 @@ extern "C" {
 }
 
 #include "msgpuck.h"
-
-#include <vector>
-#include <string>
-#include <stdexcept>
-
-#if __cplusplus > 201402L
-#include <optional>
-#endif
 
 namespace tarantool {
 
@@ -79,14 +80,20 @@ public:
 };
 
 class TntReply {
+    friend class SmartTntIStream;
+
+    void init() {
+        if ((reply = tnt_reply_init(nullptr)) == nullptr) {
+            throw std::runtime_error("Can not create tnt reply");
+        }
+    }
+
 protected:
     struct tnt_reply *reply;
 
 public:
-    TntReply() : reply(tnt_reply_init(nullptr)) {
-        if (reply == nullptr) {
-            throw std::runtime_error("Can not create tnt reply");
-        }
+    TntReply() : reply(nullptr) {
+        ;
     }
     TntReply(const TntReply &other) = delete;
     TntReply& operator=(const TntReply &other) = delete;
@@ -94,10 +101,13 @@ public:
     TntReply& operator=(TntReply &&other) = delete;
 
     ~TntReply() {
-        tnt_reply_free(reply);
+        if (reply) {
+            tnt_reply_free(reply);
+        }
     }
 
     void read_reply(TntNet &tnt_net) {
+        init();
         if (tnt_net.stream->read_reply(tnt_net.stream, reply) == -1) {
             throw std::runtime_error("Failed to read reply");
         }
@@ -141,6 +151,50 @@ class SmartTntOStream;
 class SmartTntIStream;
 
 
+namespace MsgPackBin {
+
+
+    template <class T>
+    class ConstObject {
+        friend class tarantool::SmartTntOStream;
+
+        const T data;
+
+    public:
+        constexpr ConstObject(T data_) : data(std::move(data_)) {
+            ;
+        }
+    };
+
+
+    template <class T>
+    class Parser {
+        friend class tarantool::SmartTntIStream;
+
+        T &data;
+
+    public:
+        Parser(T &data_) : data(data_) {
+            ;
+        }
+    };
+
+    template <class ...Args>
+    class Parser<std::tuple<Args&...>> {
+        friend class tarantool::SmartTntIStream;
+
+        std::tuple<Args&...> data;
+
+    public:
+        Parser(std::tuple<Args&...> data_) : data(data_) {
+            ;
+        }
+    };
+
+
+} // end of namespace Object
+
+
 namespace Map {
 
 
@@ -152,7 +206,7 @@ namespace Map {
 
         const std::tuple<Args...> data;
 
-        constexpr ConstMap(std::tuple<Args...> data_) : data(data_) {
+        constexpr ConstMap(std::tuple<Args...> &&data_) : data(data_) {
             ;
         }
 
@@ -344,12 +398,7 @@ public:
         return *this;
     }
 
-    SmartTntOStream& operator<<(const std::vector<signed char> &value) {
-        tnt_object_add_bin(stream, value.data(), static_cast<unsigned>(value.size()));
-        return *this;
-    }
-
-    SmartTntOStream& operator<<(const std::vector<unsigned char> &value) {
+    SmartTntOStream& operator<<(const std::vector<char> &value) {
         tnt_object_add_bin(stream, value.data(), static_cast<unsigned>(value.size()));
         return *this;
     }
@@ -390,6 +439,14 @@ public:
         return *this;
     }
 
+    template <class T>
+    SmartTntOStream& operator<<(const MsgPackBin::ConstObject<T> &object) {
+        SmartTntOStream tmp;
+        tmp << object.data;
+        tnt_object_add_bin(stream, TNT_SBUF_DATA(tmp.stream), TNT_SBUF_SIZE(tmp.stream));
+        return *this;
+    }
+
 };
 
 
@@ -402,7 +459,7 @@ public:
 };
 
 
-class SmartTntIStream : public TntReply {
+class SmartTntIStream {
     friend class Map::Value;
     friend class Map::Key;
 
@@ -422,6 +479,10 @@ class SmartTntIStream : public TntReply {
             *stream >> std::get<0>(tuple);
         }
     };
+
+    // One of them uses as storage of msgpack_data
+    TntReply reply;
+    std::vector<char> raw_data;
 
     const char *data;
     const char *end;
@@ -475,6 +536,8 @@ class SmartTntIStream : public TntReply {
             case MP_DOUBLE:
                 mp_decode_double(&data);
                 break;
+            case MP_EXT:
+                throw type_error("Can not parse MP_EXT");
             default:
                 throw type_error("Unknown type to ignore: " + std::to_string(static_cast<int>(type)));
         }
@@ -482,9 +545,16 @@ class SmartTntIStream : public TntReply {
 
 public:
     explicit SmartTntIStream(TntNet &tnt_net) {
-        read_reply(tnt_net);
-        data = reply->data;
-        end = data + reply->buf_size;
+        reply.read_reply(tnt_net);
+        data = reply.reply->data;
+        end = data + reply.reply->buf_size;
+    }
+
+    explicit SmartTntIStream(std::vector<char> data_)
+        : raw_data(std::move(data_)),
+          data(raw_data.data()),
+          end(data + raw_data.size()) {
+        ;
     }
 
     SmartTntIStream& operator>>(std::string &value) {
@@ -684,7 +754,7 @@ public:
         StreamHelper<std::tuple<Args...>, sizeof...(Args)>::in_tuple(this, tuple);
         return *this;
     }
-    
+
     template<typename... Args>
     SmartTntIStream& operator>>(std::tuple<Args&...> tuple) {
         check_buf_end();
@@ -698,6 +768,24 @@ public:
                     "Bad tuple size: " + std::to_string(size) + ", expected: " + std::to_string(sizeof...(Args)));
         }
         StreamHelper<std::tuple<Args&...>, sizeof...(Args)>::in_tuple(this, tuple);
+        return *this;
+    }
+
+    SmartTntIStream& operator>>(std::vector<char> &vector) {
+        check_buf_end();
+        auto type = mp_typeof(*data);
+        if (type != MP_BIN && type != MP_STR) {
+            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_BIN or MP_STR");
+        }
+        uint32_t len;
+        const char *bin;
+        if (type == MP_BIN) {
+            bin = mp_decode_bin(&data, &len);
+        } else {
+            bin = mp_decode_str(&data, &len);
+        }
+        vector.resize(len);
+        std::memcpy(vector.data(), bin, len);
         return *this;
     }
 
@@ -716,34 +804,8 @@ public:
         return *this;
     }
 
-    SmartTntIStream& operator>>(std::vector<signed char> &vector) {
-        check_buf_end();
-        auto type = mp_typeof(*data);
-        if (type != MP_BIN) {
-            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_BIN");
-        }
-        uint32_t len;
-        const char *data = mp_decode_bin(&data, &len);
-        vector.resize(len);
-        std::memcpy(vector.data(), data, len);
-        return *this;
-    }
-
-    SmartTntIStream& operator>>(std::vector<unsigned char> &vector) {
-        check_buf_end();
-        auto type = mp_typeof(*data);
-        if (type != MP_BIN) {
-            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_BIN");
-        }
-        uint32_t len;
-        const char *data = mp_decode_bin(&data, &len);
-        vector.resize(len);
-        std::memcpy(vector.data(), data, len);
-        return *this;
-    }
-
-    template <class MapParser>
-    SmartTntIStream& operator>>(MapParser &map_parser) {
+    template <class Functor>
+    SmartTntIStream& operator>>(Map::Parser<Functor> &map_parser) {
         check_buf_end();
         auto type = mp_typeof(*data);
         if (type != MP_MAP) {
@@ -754,6 +816,16 @@ public:
             Map::Key key(*this);
             map_parser.func(key);
         }
+        return *this;
+    }
+
+    template <class T>
+    SmartTntIStream& operator>>(MsgPackBin::Parser<T> &parser) {
+        check_buf_end();
+        std::vector<char> bin;
+        *this >> bin;
+        SmartTntIStream rel(std::move(bin));
+        rel >> parser.data;
         return *this;
     }
 };
@@ -828,7 +900,7 @@ public:
             throw std::runtime_error("Can not connect to tnt.");
         }
     }
-    
+
     ~TarantoolConnector() {
         tnt_close(stream);
     }
@@ -852,3 +924,5 @@ public:
 };
 
 }
+
+#endif
