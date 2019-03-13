@@ -255,8 +255,12 @@ void complex_table_example() {
 }
 
 void map_write_example() {
-    Map::ConstMap m1("key", "value", "other_key", "other_value");
-    Map::ConstMap m2("key2", 2);
+    Map::Element f("key", "value");
+    Map::Element s("other_key", "other_value");
+    Map::Element t("key2", 2);
+    Map::Element extra("extra", 2, false);
+    Map::ConstMap m1(f, extra, s);
+    Map::ConstMap m2(t);
     auto m = Map::ConstMapCat(m1, m2);
 
     std::string str;
@@ -266,6 +270,7 @@ void map_write_example() {
     Map::Parser parser([&] (Map::Key &key) {
         std::string skey;
         auto value = key.load(skey);
+        assert(skey != "extra");
         if (skey == "key") {
             value.load(str);
         } else if (skey == "key2") {
@@ -281,7 +286,7 @@ void map_write_example() {
 void binobject_example() {
     TarantoolConnector tnt("127.0.0.1", "10001");
 
-    MsgPackBin::ConstObject obj(Map::ConstMap("x", 0));
+    MsgPackBin::ConstObject obj(Map::ConstMap(Map::Element("x", 0)));
 
     std::vector<char> data;
 

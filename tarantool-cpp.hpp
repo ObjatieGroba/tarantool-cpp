@@ -198,10 +198,53 @@ namespace MsgPackBin {
 namespace Map {
 
 
+    template<class Tuple, size_t N>
+    class UseCounter {
+    public:
+        static size_t count(const Tuple &tuple) {
+            auto sum = UseCounter<Tuple, N - 1>::count(tuple);
+            auto elem = std::get<N - 1>(tuple);
+            if (elem.use) {
+                ++sum;
+            }
+            return sum;
+        }
+    };
+
+    template<class Tuple>
+    class UseCounter<Tuple, 1> {
+    public:
+        static size_t count(const Tuple &tuple) {
+            auto elem = std::get<0>(tuple);
+            if (elem.use) {
+                return 1;
+            }
+            return 0;
+        }
+    };
+
+
+    template <class Key, class Value>
+    struct Element {
+
+        const Key key;
+        const Value value;
+        const bool use;
+
+        constexpr Element(Key key_, Value value_, bool use_ = true)
+            : key(key_),
+              value(value_),
+              use(use_) {
+            ;
+        }
+    };
+
+
     template <class ...Args>
     class ConstMap {
         template <class ...Maps>
         friend constexpr auto ConstMapCat(Maps&& ...maps);
+
         friend class tarantool::SmartTntOStream;
 
         const std::tuple<Args...> data;
@@ -212,7 +255,7 @@ namespace Map {
 
     public:
         constexpr ConstMap(Args ...args) : data(args...) {
-            static_assert(sizeof...(args) % 2 == 0, "Map constructor must have even length");
+            ;
         }
     };
 
@@ -310,6 +353,14 @@ private:
             *stream << std::get<0>(tuple);
         }
     };
+
+    template <class Key, class Value>
+    SmartTntOStream& operator<<(const Map::Element<Key, Value> &elem) {
+        if (elem.use) {
+            return *this << elem.key << elem.value;
+        }
+        return *this;
+    }
 
 public:
 
@@ -434,7 +485,8 @@ public:
 
     template <class ...Args>
     SmartTntOStream& operator<<(const Map::ConstMap<Args...> &map) {
-        tnt_object_add_map(stream, sizeof...(Args) / 2);
+        size_t size = Map::UseCounter<std::tuple<Args...>, sizeof...(Args)>::count(map.data);
+        tnt_object_add_map(stream, size);
         StreamHelper<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, map.data);
         return *this;
     }
@@ -840,7 +892,7 @@ void Map::Value::load(T &value) {
     got = true;
 }
 
-void Map::Value::ignore() {
+inline void Map::Value::ignore() {
     if (got) {
         throw std::logic_error("Double ignor Value");
     }
@@ -858,7 +910,7 @@ Map::Value Map::Key::load(T &value) {
     return {stream};
 }
 
-void Map::Key::ignore() {
+inline void Map::Key::ignore() {
     if (got) {
         throw std::logic_error("Double ignor Key");
     }
@@ -867,7 +919,7 @@ void Map::Key::ignore() {
     got = true;
 }
 
-int Map::Key::type() const {
+inline int Map::Key::type() const {
     return mp_typeof(*stream.data);
 }
 
