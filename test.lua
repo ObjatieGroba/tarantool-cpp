@@ -24,3 +24,26 @@ function create_tuple(create)
     end
     return nil
 end
+
+function str_table()
+    local t = {}
+    t["F1"] = "DATA"
+    t["F2"] = 1
+    t["k"] = 100
+    return t
+end
+
+function num_table()
+    local t = {}
+    t[10] = "DATA"
+    t[100] = 1
+    t[2] = 3
+    return t
+end
+
+function mix_table()
+    local t = {}
+    t[2] = "DATA"
+    t["DATA"] = 2
+    return t
+end
