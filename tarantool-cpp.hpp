@@ -201,8 +201,8 @@ namespace Map {
     template<class Tuple, size_t N>
     class UseCounter {
     public:
-        static size_t count(const Tuple &tuple) {
-            auto sum = UseCounter<Tuple, N - 1>::count(tuple);
+        static constexpr size_t count(const Tuple &tuple) {
+            size_t sum = UseCounter<Tuple, N - 1>::count(tuple);
             auto elem = std::get<N - 1>(tuple);
             if (elem.use) {
                 ++sum;
@@ -214,7 +214,7 @@ namespace Map {
     template<class Tuple>
     class UseCounter<Tuple, 1> {
     public:
-        static size_t count(const Tuple &tuple) {
+        static constexpr size_t count(const Tuple &tuple) {
             auto elem = std::get<0>(tuple);
             if (elem.use) {
                 return 1;
@@ -248,21 +248,28 @@ namespace Map {
         friend class tarantool::SmartTntOStream;
 
         const std::tuple<Args...> data;
+        const size_t map_size;
 
-        constexpr ConstMap(std::tuple<Args...> &&data_) : data(data_) {
-            ;
+        constexpr ConstMap(std::tuple<Args...> &&data_)
+            : data(std::forward(data_)),
+              map_size(UseCounter<std::tuple<Args...>, sizeof...(Args)>::count(data)) {
         }
 
     public:
-        constexpr ConstMap(Args ...args) : data(args...) {
-            ;
+        constexpr ConstMap(Args ...args)
+            : data(args...),
+              map_size(UseCounter<std::tuple<Args...>, sizeof...(Args)>::count(data)) {
+        }
+
+        constexpr size_t size() const {
+            return map_size;
         }
     };
 
 
     template <class ...Maps>
     constexpr auto ConstMapCat(Maps&& ...maps) {
-        return ConstMap(std::tuple_cat(maps.data...));
+        return ConstMap(std::tuple_cat(std::forward(maps.data)...));
     }
 
 
@@ -485,8 +492,7 @@ public:
 
     template <class ...Args>
     SmartTntOStream& operator<<(const Map::ConstMap<Args...> &map) {
-        size_t size = Map::UseCounter<std::tuple<Args...>, sizeof...(Args)>::count(map.data);
-        tnt_object_add_map(stream, size);
+        tnt_object_add_map(stream, map.size());
         StreamHelper<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, map.data);
         return *this;
     }
@@ -497,6 +503,12 @@ public:
         tmp << object.data;
         tnt_object_add_bin(stream, TNT_SBUF_DATA(tmp.stream), TNT_SBUF_SIZE(tmp.stream));
         return *this;
+    }
+
+    std::vector<char> GetData() {
+        std::vector<char> res(TNT_SBUF_SIZE(stream));
+        std::memcpy(res.data(), TNT_SBUF_DATA(stream), TNT_SBUF_SIZE(stream));
+        return res;
     }
 
 };
@@ -532,9 +544,7 @@ class SmartTntIStream {
         }
     };
 
-    // One of them uses as storage of msgpack_data
     TntReply reply;
-    std::vector<char> raw_data;
 
     const char *data;
     const char *end;
@@ -602,17 +612,16 @@ public:
         end = data + reply.reply->buf_size;
     }
 
-    explicit SmartTntIStream(std::vector<char> data_)
-        : raw_data(std::move(data_)),
-          data(raw_data.data()),
-          end(data + raw_data.size()) {
+    explicit SmartTntIStream(const std::vector<char> &data_)
+        : data(data_.data()),
+          end(data + data_.size()) {
         ;
     }
 
     SmartTntIStream& operator>>(std::string &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type != MP_STR) {
+        if (tntunlikely(type != MP_STR)) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_STR");
         }
         uint32_t len;
@@ -624,7 +633,7 @@ public:
     SmartTntIStream& operator>>(bool &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type != MP_BOOL) {
+        if (tntunlikely(type != MP_BOOL)) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_BOOL");
         }
         value = mp_decode_bool(&data);
@@ -634,16 +643,13 @@ public:
     SmartTntIStream& operator>>(short &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        switch (type) {
-            case MP_INT:
-                value = static_cast<short>(mp_decode_int(&data));
-                break;
-            case MP_UINT:
-                value = static_cast<short>(mp_decode_uint(&data));
-                break;
-            default:
-                throw type_error(
-                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
+        if (tntunlikely(type != MP_UINT && type != MP_INT)) {
+            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
+        }
+        if (type == MP_INT) {
+            value = static_cast<short>(mp_decode_int(&data));
+        } else {
+            value = static_cast<short>(mp_decode_uint(&data));
         }
         return *this;
     }
@@ -651,7 +657,7 @@ public:
     SmartTntIStream& operator>>(unsigned short &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type == MP_UINT) {
+        if (tntlikely(type == MP_UINT)) {
             value = static_cast<unsigned short>(mp_decode_uint(&data));
             return *this;
         }
@@ -661,16 +667,13 @@ public:
     SmartTntIStream& operator>>(int &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        switch (type) {
-            case MP_INT:
-                value = static_cast<int>(mp_decode_int(&data));
-                break;
-            case MP_UINT:
-                value = static_cast<int>(mp_decode_uint(&data));
-                break;
-            default:
-                throw type_error(
-                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
+        if (tntunlikely(type != MP_UINT && type != MP_INT)) {
+            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
+        }
+        if (type == MP_INT) {
+            value = static_cast<int>(mp_decode_int(&data));
+        } else {
+            value = static_cast<int>(mp_decode_uint(&data));
         }
         return *this;
     }
@@ -678,7 +681,7 @@ public:
     SmartTntIStream& operator>>(unsigned int &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type == MP_UINT) {
+        if (tntlikely(type == MP_UINT)) {
             value = static_cast<unsigned>(mp_decode_uint(&data));
             return *this;
         }
@@ -688,16 +691,13 @@ public:
     SmartTntIStream& operator>>(long &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        switch (type) {
-            case MP_INT:
-                value = static_cast<long>(mp_decode_int(&data));
-                break;
-            case MP_UINT:
-                value = static_cast<long>(mp_decode_uint(&data));
-                break;
-            default:
-                throw type_error(
-                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
+        if (tntunlikely(type != MP_UINT && type != MP_INT)) {
+            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
+        }
+        if (type == MP_INT) {
+            value = static_cast<long>(mp_decode_int(&data));
+        } else {
+            value = static_cast<long>(mp_decode_uint(&data));
         }
         return *this;
     }
@@ -705,7 +705,7 @@ public:
     SmartTntIStream& operator>>(unsigned long &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type == MP_UINT) {
+        if (tntlikely(type == MP_UINT)) {
             value = static_cast<unsigned long>(mp_decode_uint(&data));
             return *this;
         }
@@ -715,16 +715,13 @@ public:
     SmartTntIStream& operator>>(long long &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        switch (type) {
-            case MP_INT:
-                value = static_cast<long long>(mp_decode_int(&data));
-                break;
-            case MP_UINT:
-                value = static_cast<long long>(mp_decode_uint(&data));
-                break;
-            default:
-                throw type_error(
-                        "Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
+        if (tntunlikely(type != MP_UINT && type != MP_INT)) {
+            throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_INT or MP_UINT");
+        }
+        if (type == MP_INT) {
+            value = static_cast<long long>(mp_decode_int(&data));
+        } else {
+            value = static_cast<long long>(mp_decode_uint(&data));
         }
         return *this;
     }
@@ -732,7 +729,7 @@ public:
     SmartTntIStream& operator>>(unsigned long long &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type == MP_UINT) {
+        if (tntlikely(type == MP_UINT)) {
             value = static_cast<unsigned long long>(mp_decode_uint(&data));
             return *this;
         }
@@ -742,7 +739,7 @@ public:
     SmartTntIStream& operator>>(float &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type == MP_FLOAT) {
+        if (tntlikely(type == MP_FLOAT)) {
             value = mp_decode_float(&data);
             return *this;
         }
@@ -752,7 +749,7 @@ public:
     SmartTntIStream& operator>>(double &value) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type == MP_DOUBLE) {
+        if (tntlikely(type == MP_DOUBLE)) {
             value = mp_decode_double(&data);
             return *this;
         }
@@ -795,11 +792,11 @@ public:
     SmartTntIStream& operator>>(std::tuple<Args...> &tuple) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type != MP_ARRAY) {
+        if (tntunlikely(type != MP_ARRAY)) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_ARRAY");
         }
         size_t size = mp_decode_array(&data);
-        if (size != sizeof...(Args)) {
+        if (tntunlikely(size != sizeof...(Args))) {
             throw std::length_error(
                     "Bad tuple size: " + std::to_string(size) + ", expected: " + std::to_string(sizeof...(Args)));
         }
@@ -811,11 +808,11 @@ public:
     SmartTntIStream& operator>>(std::tuple<Args&...> tuple) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type != MP_ARRAY) {
+        if (tntunlikely(type != MP_ARRAY)) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_ARRAY");
         }
         size_t size = mp_decode_array(&data);
-        if (size != sizeof...(Args)) {
+        if (tntunlikely(size != sizeof...(Args))) {
             throw std::length_error(
                     "Bad tuple size: " + std::to_string(size) + ", expected: " + std::to_string(sizeof...(Args)));
         }
@@ -826,7 +823,7 @@ public:
     SmartTntIStream& operator>>(std::vector<char> &vector) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type != MP_BIN && type != MP_STR) {
+        if (tntunlikely(type != MP_BIN && type != MP_STR)) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_BIN or MP_STR");
         }
         uint32_t len;
@@ -845,7 +842,7 @@ public:
     SmartTntIStream& operator>>(std::vector<T> &vector) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type != MP_ARRAY) {
+        if (tntunlikely(type != MP_ARRAY)) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_ARRAY");
         }
         size_t size = mp_decode_array(&data);
@@ -860,7 +857,7 @@ public:
     SmartTntIStream& operator>>(Map::Parser<Functor> &map_parser) {
         check_buf_end();
         auto type = mp_typeof(*data);
-        if (type != MP_MAP) {
+        if (tntunlikely(type != MP_MAP)) {
             throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_MAP");
         }
         size_t size = mp_decode_map(&data);
