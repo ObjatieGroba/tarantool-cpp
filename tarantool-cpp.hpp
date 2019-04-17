@@ -508,6 +508,10 @@ public:
 
 class ConstTupleTntObject : public SmartTntOStream {
 public:
+    ConstTupleTntObject() {
+        ;
+    }
+
     template<typename... Args>
     ConstTupleTntObject(Args... args) {
         *this << std::make_tuple(args...);
