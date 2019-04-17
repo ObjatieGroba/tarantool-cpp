@@ -9,10 +9,15 @@
 
 #if __cplusplus > 201402L && __has_include(<optional>)
 #  include <optional>
+   using std::optional;
+   using std::nullopt_t;
 #  define enable_optional 1
 #elif __cplusplus > 201402L && __has_include(<experimental/optional>)
 #  include <experimental/optional>
+   using std::experimental::optional;
+   using std::experimental::nullopt_t;
 #  define enable_optional 1
+#  define experimental_optional 1
 #else
 #  define enable_optional 0
 #endif
@@ -268,12 +273,12 @@ namespace Map {
     };
 
 
-#if __cplusplus > 201402L
-    template <class ...Maps>
-    constexpr auto ConstMapCat(Maps&& ...maps) {
-        return ConstMap(std::tuple_cat(maps.data...));
-    }
-#endif
+//#if __cplusplus > 201402L
+//    template <class ...Maps>
+//    constexpr auto ConstMapCat(Maps&& ...maps) {
+//        return ConstMap(std::tuple_cat(maps.data...));
+//    }
+//#endif
 
 
     template <class Functor>
@@ -478,7 +483,7 @@ public:
 
 #if enable_optional
     template<class T>
-    SmartTntOStream& operator<<(const std::optional<T> &value) {
+    SmartTntOStream& operator<<(const optional<T> &value) {
         if (value) {
             *this << value.value();
         } else {
@@ -487,7 +492,7 @@ public:
         return *this;
     }
 
-    SmartTntOStream& operator<<(std::nullopt_t null) {
+    SmartTntOStream& operator<<(nullopt_t null) {
         tnt_object_add_nil(stream);
         return *this;
     }
@@ -791,11 +796,15 @@ public:
 
 #if enable_optional
     template<class T>
-    SmartTntIStream& operator>>(std::optional<T> &value) {
+    SmartTntIStream& operator>>(optional<T> &value) {
         check_buf_end();
         if (mp_typeof(*data) == MP_NIL) {
             mp_decode_nil(&data);
+#if experimental_optional
+            value = std::experimental::nullopt;
+#else
             value.reset();
+#endif
             return *this;
         }
         T t;
