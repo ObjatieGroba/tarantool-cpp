@@ -242,8 +242,10 @@ namespace Map {
 
     template <class ...Args>
     class ConstMap {
+#if __cplusplus > 201402L
         template <class ...Maps>
         friend constexpr auto ConstMapCat(Maps&& ...maps);
+#endif
 
         friend class tarantool::SmartTntOStream;
 
@@ -260,10 +262,12 @@ namespace Map {
     };
 
 
+#if __cplusplus > 201402L
     template <class ...Maps>
     constexpr auto ConstMapCat(Maps&& ...maps) {
         return ConstMap(std::tuple_cat(maps.data...));
     }
+#endif
 
 
     template <class Functor>
