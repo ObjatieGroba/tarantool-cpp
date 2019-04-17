@@ -7,8 +7,14 @@
 #include <tuple>
 #include <cstring>
 
-#if __cplusplus > 201402L
-#include <optional>
+#if __cplusplus > 201402L && __has_include(<optional>)
+#  include <optional>
+#  define enable_optional 1
+#elif __cplusplus > 201402L && __has_include(<experimental/optional>)
+#  include <experimental/optional>
+#  define enable_optional 1
+#else
+#  define enable_optional 0
 #endif
 
 extern "C" {
@@ -470,7 +476,7 @@ public:
     }
 #endif
 
-#if __cplusplus > 201402L
+#if enable_optional
     template<class T>
     SmartTntOStream& operator<<(const std::optional<T> &value) {
         if (value) {
@@ -783,7 +789,7 @@ public:
     }
 #endif
 
-#if __cplusplus > 201402L
+#if enable_optional
     template<class T>
     SmartTntIStream& operator>>(std::optional<T> &value) {
         check_buf_end();
@@ -984,5 +990,7 @@ public:
 };
 
 }
+
+#undef enable_optional
 
 #endif
