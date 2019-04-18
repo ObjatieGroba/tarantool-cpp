@@ -765,6 +765,10 @@ public:
             value = mp_decode_float(&data);
             return *this;
         }
+        if (type == MP_DOUBLE) {
+            value = static_cast<float>(mp_decode_double(&data));
+            return *this;
+        }
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_FLOAT");
     }
 
@@ -773,6 +777,10 @@ public:
         auto type = mp_typeof(*data);
         if (type == MP_DOUBLE) {
             value = mp_decode_double(&data);
+            return *this;
+        }
+        if (type == MP_FLOAT) {
+            value = static_cast<double>(mp_decode_float(&data));
             return *this;
         }
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_DOUBLE");
