@@ -25,16 +25,21 @@ tie(str, num) = tnt.call<optional<string>, int>("func_name", {3, 4, 5, "arg"});
 - tuple
 - vector
 - vector<char> as binary
-- map (SOON)
+- map
+- boost::optional
 
 Custom classes expressed through basic
+
+
+# Tests
+  C++17, GCC 7 or later
 
 
 # F.A.Q.
 
 - Why doesn't tarantool-cpp use std::variant?
 
-  It is hard to resolve a type of variable by the first char of MsgPack elements. There are only 7 basic types of stored data. We can add variant for basic types, but for others we have to emplement recursive brute force. 
+  It is hard to resolve a type of variable by the first char of MsgPack elements. There are only 7 basic types of stored data. We can add variant for basic types, but for others we have to emplement recursive brute force.
 
 - Is it thread safe?
 
@@ -42,4 +47,4 @@ Custom classes expressed through basic
 
 - Is it compatible with C++11?
 
-  Yes (master branch), but we recommend to use c++17 (or boost::optional), because there are many cases where using std::optional is necessary. 
+  Yes (master branch), but we recommend to use c++17 (GCC 7 or later), because there are many cases where using std::optional is necessary.

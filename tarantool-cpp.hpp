@@ -112,7 +112,7 @@ public:
             throw std::runtime_error("Failed to read reply");
         }
         if (reply->code != 0) {
-            throw std::runtime_error(std::string(reply->error));
+            throw std::runtime_error(std::string(reply->error, reply->error_end));
         }
     }
 };
@@ -222,8 +222,10 @@ namespace Map {
 
     template <class ...Args>
     class ConstMap {
+#if __cplusplus > 201402L
         template <class ...Maps>
         friend constexpr auto ConstMapCat(Maps&& ...maps);
+#endif
 
         friend class tarantool::SmartTntOStream;
 
@@ -247,10 +249,12 @@ namespace Map {
     };
 
 
+#if __cplusplus > 201402L
     template <class ...Maps>
     constexpr auto ConstMapCat(Maps&& ...maps) {
         return ConstMap(std::tuple_cat(maps.data...));
     }
+#endif
 
 
     template <class Functor>
@@ -484,6 +488,10 @@ public:
 
 class ConstTupleTntObject : public SmartTntOStream {
 public:
+    ConstTupleTntObject() {
+        ;
+    }
+
     template<typename... Args>
     ConstTupleTntObject(Args... args) {
         *this << std::make_tuple(args...);
@@ -699,6 +707,10 @@ public:
             value = mp_decode_float(&data);
             return *this;
         }
+        if (type == MP_DOUBLE) {
+            value = static_cast<float>(mp_decode_double(&data));
+            return *this;
+        }
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_FLOAT");
     }
 
@@ -707,6 +719,10 @@ public:
         auto type = mp_typeof(*data);
         if (tntlikely(type == MP_DOUBLE)) {
             value = mp_decode_double(&data);
+            return *this;
+        }
+        if (type == MP_FLOAT) {
+            value = static_cast<double>(mp_decode_float(&data));
             return *this;
         }
         throw type_error("Type: " + std::to_string(static_cast<int>(type)) + ", expected MP_DOUBLE");
