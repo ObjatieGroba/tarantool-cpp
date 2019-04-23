@@ -47,4 +47,6 @@ Custom classes expressed through basic
 
 - Is it compatible with C++11?
 
+  [cxx17 branch](../../tree/cxx17)
+
   Yes, but we recommend to use c++17 (GCC 7 or later), because there are many cases where using std::optional is necessary.

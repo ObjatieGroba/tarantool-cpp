@@ -123,7 +123,7 @@ public:
             throw std::runtime_error("Failed to read reply");
         }
         if (reply->code != 0) {
-            throw std::runtime_error(std::string(reply->error));
+            throw std::runtime_error(std::string(reply->error, reply->error_end));
         }
     }
 };
