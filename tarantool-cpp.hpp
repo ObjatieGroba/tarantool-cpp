@@ -198,30 +198,10 @@ namespace MsgPackBin {
 namespace Map {
 
 
-    template<class Tuple, size_t N>
-    class UseCounter {
-    public:
-        static constexpr size_t count(const Tuple &tuple) {
-            size_t sum = UseCounter<Tuple, N - 1>::count(tuple);
-            auto elem = std::get<N - 1>(tuple);
-            if (elem.use) {
-                ++sum;
-            }
-            return sum;
-        }
-    };
-
-    template<class Tuple>
-    class UseCounter<Tuple, 1> {
-    public:
-        static constexpr size_t count(const Tuple &tuple) {
-            auto elem = std::get<0>(tuple);
-            if (elem.use) {
-                return 1;
-            }
-            return 0;
-        }
-    };
+    template <typename... Args, std::size_t... Idx>
+    constexpr size_t map_elem_use_helper(const std::tuple<Args...> &tuple, std::index_sequence<Idx...>) {
+        return (... + std::get<Idx>(tuple).use);
+    }
 
 
     template <class Key, class Value>
@@ -252,13 +232,13 @@ namespace Map {
 
         constexpr ConstMap(std::tuple<Args...> &&data_)
             : data(std::forward<std::tuple<Args...>>(data_)),
-              map_size(UseCounter<std::tuple<Args...>, sizeof...(Args)>::count(data)) {
+              map_size(map_elem_use_helper(data, std::index_sequence_for<Args...>{})) {
         }
 
     public:
         constexpr ConstMap(Args ...args)
             : data(args...),
-              map_size(UseCounter<std::tuple<Args...>, sizeof...(Args)>::count(data)) {
+              map_size(map_elem_use_helper(data, std::index_sequence_for<Args...>{})) {
         }
 
         constexpr size_t size() const {
@@ -344,22 +324,10 @@ namespace Map {
 
 class SmartTntOStream : public TntObject {
 private:
-    template<class Tuple, size_t N>
-    class StreamHelper {
-    public:
-        static void out_tuple(SmartTntOStream *stream, const Tuple &tuple) {
-            StreamHelper<Tuple, N - 1>::out_tuple(stream, tuple);
-            *stream << std::get<N - 1>(tuple);
-        }
-    };
-
-    template<class Tuple>
-    class StreamHelper<Tuple, 1> {
-    public:
-        static void out_tuple(SmartTntOStream *stream, const Tuple &tuple) {
-            *stream << std::get<0>(tuple);
-        }
-    };
+    template <typename... Args, std::size_t... Idx>
+    SmartTntOStream&  tuple_stream_helper(const std::tuple<Args...> &tuple, std::index_sequence<Idx...>) {
+        return (*this << ... << std::get<Idx>(tuple));
+    }
 
     template <class Key, class Value>
     SmartTntOStream& operator<<(const Map::Element<Key, Value> &elem) {
@@ -443,7 +411,7 @@ public:
     template<typename... Args>
     SmartTntOStream& operator<<(const std::tuple<Args...> &value) {
         tnt_object_add_array(stream, std::tuple_size<std::tuple<Args...>>::value);
-        StreamHelper<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, value);
+        tuple_stream_helper(value, std::index_sequence_for<Args...>{});
         return *this;
     }
 
@@ -493,7 +461,7 @@ public:
     template <class ...Args>
     SmartTntOStream& operator<<(const Map::ConstMap<Args...> &map) {
         tnt_object_add_map(stream, map.size());
-        StreamHelper<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, map.data);
+        tuple_stream_helper(map.data, std::index_sequence_for<Args...>{});
         return *this;
     }
 
@@ -527,22 +495,10 @@ class SmartTntIStream {
     friend class Map::Value;
     friend class Map::Key;
 
-    template<class Tuple, size_t N>
-    class StreamHelper {
-    public:
-        static void in_tuple(SmartTntIStream *stream, Tuple &tuple) {
-            StreamHelper<Tuple, N - 1>::in_tuple(stream, tuple);
-            *stream >> std::get<N - 1>(tuple);
-        }
-    };
-
-    template<class Tuple>
-    class StreamHelper<Tuple, 1> {
-    public:
-        static void in_tuple(SmartTntIStream *stream, Tuple &tuple) {
-            *stream >> std::get<0>(tuple);
-        }
-    };
+    template <typename... Args, std::size_t... Idx>
+    SmartTntIStream&  tuple_stream_helper(std::tuple<Args...> &tuple, std::index_sequence<Idx...>) {
+        return (*this >> ... >> std::get<Idx>(tuple));
+    }
 
     TntReply reply;
 
@@ -800,7 +756,7 @@ public:
             throw std::length_error(
                     "Bad tuple size: " + std::to_string(size) + ", expected: " + std::to_string(sizeof...(Args)));
         }
-        StreamHelper<std::tuple<Args...>, sizeof...(Args)>::in_tuple(this, tuple);
+        tuple_stream_helper(tuple, std::index_sequence_for<Args...>{});
         return *this;
     }
 
@@ -816,7 +772,7 @@ public:
             throw std::length_error(
                     "Bad tuple size: " + std::to_string(size) + ", expected: " + std::to_string(sizeof...(Args)));
         }
-        StreamHelper<std::tuple<Args&...>, sizeof...(Args)>::in_tuple(this, tuple);
+        tuple_stream_helper(tuple, std::index_sequence_for<Args...>{});
         return *this;
     }
 
@@ -891,7 +847,7 @@ void Map::Value::load(T &value) {
 
 inline void Map::Value::ignore() {
     if (got) {
-        throw std::logic_error("Double ignor Value");
+        throw std::logic_error("Double ignore Value");
     }
     stream.ignore();
     got = true;
@@ -909,7 +865,7 @@ Map::Value Map::Key::load(T &value) {
 
 inline void Map::Key::ignore() {
     if (got) {
-        throw std::logic_error("Double ignor Key");
+        throw std::logic_error("Double ignore Key");
     }
     stream.ignore();  // Ignore key
     stream.ignore();  // Ignore value too
