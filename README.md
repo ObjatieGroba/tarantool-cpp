@@ -42,4 +42,4 @@ Custom classes expressed through basic
 
 - Is it compatible with C++11?
 
-  Yes, but we recommend to use c++17 (or boost::optional), because there are many cases where using std::optional is necessary. 
+  Yes (master branch), but we recommend to use c++17 (or boost::optional), because there are many cases where using std::optional is necessary. 
