@@ -251,7 +251,7 @@ namespace Map {
         const size_t map_size;
 
         constexpr ConstMap(std::tuple<Args...> &&data_)
-            : data(std::forward(data_)),
+            : data(std::forward<std::tuple<Args...>>(data_)),
               map_size(UseCounter<std::tuple<Args...>, sizeof...(Args)>::count(data)) {
         }
 
@@ -269,7 +269,7 @@ namespace Map {
 
     template <class ...Maps>
     constexpr auto ConstMapCat(Maps&& ...maps) {
-        return ConstMap(std::tuple_cat(std::forward(maps.data)...));
+        return ConstMap(std::tuple_cat(maps.data...));
     }
 
 

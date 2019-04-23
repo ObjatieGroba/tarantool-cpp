@@ -47,7 +47,6 @@ auto test_map_encode_mp() {
     rp[6] = rand() % 2 == 0;
     rp[7] = rand() % 2 == 0;
     rp[8] = rand() % 2 == 0;
-    size_t size = 0;
     size_t map_size = 0;
     for (auto &&elem : rp) {
         if (elem) {
