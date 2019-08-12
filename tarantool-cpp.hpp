@@ -403,6 +403,11 @@ public:
         return *this;
     }
 
+    SmartTntOStream& operator<<(std::string_view value) {
+        tnt_object_add_str(stream, value.data(), static_cast<uint32_t>(value.size()));
+        return *this;
+    }
+
     SmartTntOStream& operator<<(const char *value) {
         if (value == nullptr) {
             tnt_object_add_nil(stream);
