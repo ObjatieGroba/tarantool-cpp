@@ -441,6 +441,7 @@ public:
     SmartTntOStream& operator<<(const std::tuple<Args...> &value) {
         tnt_object_add_array(stream, std::tuple_size<std::tuple<Args...>>::value);
         StreamHelper<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, value);
+        tnt_object_container_close(stream);
         return *this;
     }
 
@@ -450,6 +451,7 @@ public:
         for (auto &&elem : value) {
             *this << elem;
         }
+        tnt_object_container_close(stream);
         return *this;
     }
 
@@ -492,6 +494,7 @@ public:
         size_t size = Map::UseCounter<std::tuple<Args...>, sizeof...(Args)>::count(map.data);
         tnt_object_add_map(stream, size);
         StreamHelper<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, map.data);
+        tnt_object_container_close(stream);
         return *this;
     }
 
