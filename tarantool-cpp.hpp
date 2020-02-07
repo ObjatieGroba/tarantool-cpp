@@ -425,7 +425,7 @@ public:
         for (auto &&elem : value) {
             *this << elem;
         }
-        
+        tnt_object_container_close(stream);
         return *this;
     }
 
