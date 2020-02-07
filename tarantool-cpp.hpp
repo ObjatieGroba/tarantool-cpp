@@ -415,6 +415,7 @@ public:
     SmartTntOStream& operator<<(const std::tuple<Args...> &value) {
         tnt_object_add_array(stream, std::tuple_size<std::tuple<Args...>>::value);
         tuple_stream_helper(value, std::index_sequence_for<Args...>{});
+        tnt_object_container_close(stream);
         return *this;
     }
 
@@ -424,6 +425,7 @@ public:
         for (auto &&elem : value) {
             *this << elem;
         }
+        
         return *this;
     }
 
@@ -465,6 +467,7 @@ public:
     SmartTntOStream& operator<<(const Map::ConstMap<Args...> &map) {
         tnt_object_add_map(stream, map.size());
         tuple_stream_helper(map.data, std::index_sequence_for<Args...>{});
+        tnt_object_container_close(stream);
         return *this;
     }
 
