@@ -498,6 +498,9 @@ public:
     }
 };
 
+struct Ignorrer {
+    ;
+};
 
 class SmartTntIStream {
     friend class Map::Value;
@@ -513,7 +516,7 @@ class SmartTntIStream {
     const char *data;
     const char *end;
 
-    inline void check_buf_end() {
+    inline void check_buf_end() const {
         if (data >= end) {
             throw Error("End of stream");
         }
@@ -579,6 +582,15 @@ public:
     explicit SmartTntIStream(const std::vector<char> &data_)
         : data(data_.data()),
           end(data + data_.size()) { }
+
+    mp_type type() const {
+        check_buf_end();
+        return mp_typeof(*data);
+    }
+
+    std::vector<char> to_binary() const {
+        return {data, end};
+    }
 
     SmartTntIStream& operator>>(std::string &value) {
         check_buf_end();
@@ -845,6 +857,12 @@ public:
         rel >> parser.data;
         return *this;
     }
+
+    SmartTntIStream& operator>>(Ignorrer) {
+        check_buf_end();
+        ignore();
+        return *this;
+    }
 };
 
 
@@ -893,13 +911,19 @@ class ResultParser {
     SmartTntIStream stream;
 
 public:
-    ResultParser(TntNet &tnt_net) : stream(tnt_net) {
-        ;
-    }
+    ResultParser(TntNet &tnt_net) : stream(tnt_net) { }
 
     template <class ...Args>
     void parse(Args& ...args) {
         stream >> std::tie(args...);
+    }
+
+    mp_type type() const {
+        return stream.type();
+    }
+
+    auto to_binary() const {
+        return stream.to_binary();
     }
 };
 
