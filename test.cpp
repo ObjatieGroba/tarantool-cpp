@@ -226,6 +226,42 @@ void tables_example() {
     assert(str == "DATA");
 }
 
+struct MyMapHolder {
+    std::string str;
+};
+
+tarantool::SmartTntIStream &operator>>(tarantool::SmartTntIStream & stream, MyMapHolder &mv) {
+    Map::Parser parser([&] (Map::Key &key) {
+        std::string str_key;
+        auto value = key.load(str_key);
+        if (str_key == "F1") {
+           value.load(mv.str);
+        }
+    });
+    return stream >> parser;
+}
+
+struct MyTupleHolder {
+    int x, y;
+    MyMapHolder map;
+};
+
+tarantool::SmartTntIStream &operator>>(tarantool::SmartTntIStream & stream, MyTupleHolder &mt) {
+    return stream >> std::tie(mt.x, mt.y, mt.map);
+}
+
+void table_in_array_example() {
+    TarantoolConnector tnt("127.0.0.1", "10001");
+    auto result = tnt.call("table_in_array", {1});
+    int z;
+    MyTupleHolder my_tuple;
+    result.parse(my_tuple, z);
+    assert(my_tuple.map.str == "DATA");
+    assert(my_tuple.x == 1);
+    assert(my_tuple.y == 2);
+    assert(z == 3);
+}
+
 void complex_table_example() {
     std::string str;
     int num;
@@ -325,6 +361,7 @@ int main() {
     test_box_tuple();
     class_example();
     tables_example();
+    table_in_array_example();
     complex_table_example();
     map_write_example();
     binobject_example();

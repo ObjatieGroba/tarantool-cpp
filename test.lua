@@ -33,6 +33,12 @@ function str_table()
     return t
 end
 
+function table_in_array()
+    local t = {}
+    t["F1"] = "DATA"
+    return {1, 2, t}, 3
+end
+
 function num_table()
     local t = {}
     t[10] = "DATA"
