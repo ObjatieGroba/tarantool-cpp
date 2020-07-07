@@ -147,7 +147,7 @@ void test_errors() {
         int tmp;
         std::tie(out, tmp) = tnt.call<int, int>("same", {in});
         assert(false);
-    } catch (const std::length_error& e) {
+    } catch (const TypeError& e) {
         ;
     }
 
@@ -156,7 +156,7 @@ void test_errors() {
         unsigned tmp;
         std::tie(tmp) = tnt.call<unsigned>("same", {in});
         assert(false);
-    } catch (const type_error& e) {
+    } catch (const TypeError& e) {
         ;
     }
 }

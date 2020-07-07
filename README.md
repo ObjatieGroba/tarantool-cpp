@@ -39,7 +39,7 @@ Custom classes expressed through basic
 
 - Why doesn't tarantool-cpp use std::variant?
 
-  It is hard to resolve a type of variable by the first char of MsgPack elements. There are only 7 basic types of stored data. We can add variant for basic types, but for others we have to emplement recursive brute force. 
+  It is hard to resolve a type of variable by the first char of MsgPack elements. There are only 7 basic types of stored data. We can add variant for basic types, but for others we have to emplement recursive brute force.
 
 - Is it thread safe?
 
@@ -47,6 +47,4 @@ Custom classes expressed through basic
 
 - Is it compatible with C++11?
 
-  [cxx17 branch](../../tree/cxx17)
-
-  Yes, but we recommend to use c++17 (GCC 7 or later), because there are many cases where using std::optional is necessary.
+  Yes (master branch), but we recommend to use c++17 (GCC 7 or later), because there are many cases where using std::optional is necessary.
