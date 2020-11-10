@@ -140,8 +140,8 @@ public:
         tnt_request_free(request);
     }
 
-    void call(const std::string &name, TntObject &tnt_object, TntNet &tnt_net) {
-        if (tnt_request_set_funcz(request, name.c_str()) != 0) {
+    void call(std::string_view name, TntObject &tnt_object, TntNet &tnt_net) {
+        if (tnt_request_set_func(request, name.data(), name.size()) != 0) {
             throw TarantoolCError("Can not set function name");
         }
         if (tnt_request_set_tuple(request, tnt_object.stream) != 0) {
@@ -929,10 +929,15 @@ public:
 
 
 class TarantoolConnector : private TntNet {
-
 public:
-    TarantoolConnector(const std::string &addr, const std::string &port) {
-        if (tnt_set(stream, TNT_OPT_URI, (addr + ":" + port).c_str()) != 0) {
+    TarantoolConnector(std::string_view addr, std::string_view port) {
+        {
+            url_.reserve(addr.size() + 1 + port.size());
+            url_.append(addr);
+            url_.push_back(':');
+            url_.append(port);
+        }
+        if (tnt_set(stream, TNT_OPT_URI, url_.c_str()) != 0) {
             throw TarantoolCError("Can not set addr of tnt.");
         }
         if (tnt_set(stream, TNT_OPT_SEND_BUF, 0) != 0) {
@@ -951,7 +956,7 @@ public:
     }
 
     template<class... Args>
-    std::tuple<Args...> call(const std::string &name, ConstTupleTntObject args) {
+    std::tuple<Args...> call(std::string_view name, ConstTupleTntObject args) {
         TntRequest request;
         request.call(name, args, *this);
 
@@ -961,11 +966,18 @@ public:
         return tuple;
     }
 
-    ResultParser call(const std::string &name, ConstTupleTntObject args) {
+    ResultParser call(std::string_view name, ConstTupleTntObject args) {
         TntRequest request;
         request.call(name, args, *this);
         return {*this};
     }
+
+    [[nodiscard]] std::string_view get_url() const {
+        return url_;
+    }
+
+private:
+    std::string url_;
 };
 
 }
